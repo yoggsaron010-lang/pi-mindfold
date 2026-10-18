@@ -8,9 +8,8 @@ import { AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import mindfold from "../index.js";
 import { ActivityStore } from "../src/activity-store.js";
-import { hostModule } from "./host-modules.mjs";
 import { assertCodemodeMcpContract } from "./codemode-contract.mjs";
-const { resolveGrammarConstrainedSampling } = await hostModule("../../pi-ai/dist/api/constrained-sampling.js");
+const { resolveGrammarConstrainedSampling } = await import("@earendil-works/pi-ai/api/constrained-sampling");
 
 const model = {
   id: "compact-test", name: "Compact test model", api: "openai-completions", provider: "openai",

@@ -1,6 +1,7 @@
 import { getDisplaySummary } from "../vendor/pi-tool-explain/display-summary.js";
 import { loadDisplayPayload } from "./activity-journal.js";
 import { assistantPublicText, readPublicActivity } from "./thinking-intent.js";
+import { resolveLanguage } from "./locale.js";
 
 const messageKeys = new WeakMap();
 function fallbackMessageKey(message) {
@@ -22,6 +23,7 @@ export class ActivityStore {
   sequence = 0;
   messageSequence = 0;
   activeMessage;
+  constructor({ language = resolveLanguage() } = {}) { this.language = language; }
 
   reset() {
     this.groups = [];
@@ -89,7 +91,7 @@ export class ActivityStore {
     const key = messageKey(message);
     const group = this.messages.get(key);
     if (group?.activity?.kind !== "thinking" || group.activity.key !== key) return;
-    const status = readPublicActivity(message, { offset: group.thinkingTextOffset ?? 0, complete });
+    const status = readPublicActivity(message, { offset: group.thinkingTextOffset ?? 0, complete, language: this.language });
     if (!finished && (status.kind === "empty" || status.kind === "pending" || status.kind === "status")) {
       group.thinkingStatusRange = status.range;
       if (status.kind === "status") group.activity.intent = status.intent;
@@ -176,15 +178,15 @@ export class ActivityStore {
     return getDisplaySummary(this.calls.get(id)?.args);
   }
 
-  restore(entries) {
+  restore(entries, sessionDirectory) {
     this.reset();
     for (const entry of entries) {
       if (entry.type === "custom" && (entry.customType === "mindfold.tool-start" || entry.customType === "compact-thinking.tool-start")) {
-        this.startTool(loadDisplayPayload(entry.data));
+        this.startTool(loadDisplayPayload(entry.data, sessionDirectory, this.language));
         continue;
       }
       if (entry.type === "custom" && (entry.customType === "mindfold.nested" || entry.customType === "compact-thinking.nested")) {
-        const data = loadDisplayPayload(entry.data);
+        const data = loadDisplayPayload(entry.data, sessionDirectory, this.language);
         if (data?.phase === "start") {
           // Legacy sessions did not save top-level starts. Infer only the parent;
           // completion order cannot reconstruct a missing parallel start order.

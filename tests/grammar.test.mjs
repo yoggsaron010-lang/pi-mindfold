@@ -4,7 +4,7 @@ import { IntentDecorator, intentFor } from "../src/intent.js";
 import { hostModule } from "./host-modules.mjs";
 import { assertCodemodeMcpContract } from "./codemode-contract.mjs";
 const { createCodemodeToolDefinition } = await hostModule("./extensions/codemode/tool.js");
-const { resolveGrammarConstrainedSampling } = await hostModule("../../pi-ai/dist/api/constrained-sampling.js");
+const { resolveGrammarConstrainedSampling } = await import("@earendil-works/pi-ai/api/constrained-sampling");
 
 test("codemode keeps grammar sampling and MCP schema identity while obtaining Chinese intent from a source comment", () => {
   const tool = createCodemodeToolDefinition();

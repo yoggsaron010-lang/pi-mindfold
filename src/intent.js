@@ -1,17 +1,16 @@
 import { getDisplaySummary, hasDisplaySummaryParameter, normalizeDisplaySummary, withDisplaySummary } from "../vendor/pi-tool-explain/display-summary.js";
+import { messages, resolveLanguage } from "./locale.js";
 
-const labels = {
-  read: "读取文件", edit: "更新文件", write: "写入文件", grep: "搜索文件内容", find: "查找匹配文件", ls: "列出目录内容",
-  bash: "执行命令", powershell: "执行 PowerShell 命令", nu: "执行 Nushell 命令", nushell: "执行 Nushell 命令",
-  codemode: "执行批量工具脚本", web_search: "搜索网页资料", google_search: "检索最新资料", fetch_content: "读取网页内容",
-  get_search_content: "读取检索结果", source_check: "核查资料来源", mcp: "调用外部工具", todo: "更新任务进度",
-};
-export function fallbackIntent(name) { return labels[name] ?? `运行 ${name}`; }
+export function fallbackIntent(name, language = resolveLanguage()) {
+  const text = messages(language);
+  return text.toolLabels[name] ?? text.runTool(name);
+}
 
 /** Reuse upstream schema, sanitization, preparation and execute wrappers. */
 export class IntentDecorator {
   originals = new Map();
   skipped = new Set();
+  constructor({ language = resolveLanguage() } = {}) { this.language = language; }
 
   decorate(tool) {
     if (!tool || this.originals.has(tool) || typeof tool.execute !== "function") return tool;
@@ -20,8 +19,7 @@ export class IntentDecorator {
     if (tool.constrainedSampling?.type === "grammar") {
       if (tool.name === "codemode") {
         const before = new Map([["promptGuidelines", Object.getOwnPropertyDescriptor(tool, "promptGuidelines")]]);
-        tool.promptGuidelines = [...(tool.promptGuidelines ?? []),
-          'Start every codemode script with "// 意图：简短中文目的" (after an optional // @options: line). Describe why the script is needed in Simplified Chinese; never include secrets. Nested tools whose schema defines displaySummary must still include it.'];
+        tool.promptGuidelines = [...(tool.promptGuidelines ?? []), messages(this.language).codemodeGuideline];
         this.originals.set(tool, { before, after: new Map([["promptGuidelines", tool.promptGuidelines]]) });
       } else this.skipped.add(tool.name);
       return tool;
@@ -33,8 +31,8 @@ export class IntentDecorator {
       return tool;
     }
     const wrapped = withDisplaySummary(tool, {
-      language: "zh-CN", required: true, maxLength: 96,
-      fallback: () => fallbackIntent(tool.name),
+      language: this.language, required: true, maxLength: 96,
+      fallback: () => fallbackIntent(tool.name, this.language),
     });
     const keys = ["parameters", "promptGuidelines", "prepareArguments", "execute", "renderCall"];
     const before = new Map(keys.map((key) => [key, Object.getOwnPropertyDescriptor(tool, key)]));
@@ -56,14 +54,14 @@ export class IntentDecorator {
   }
 }
 
-export function intentFor(args, name) {
+export function intentFor(args, name, language = resolveLanguage()) {
   const summary = getDisplaySummary(args);
   if (summary) return summary;
   if (name === "codemode" && typeof args?.code === "string") {
     // Only accept the leading intent comment, never an arbitrary string inside code.
-    const match = /^\s*(?:\/\/\s*@options:[^\r\n]*\r?\n)?\s*\/\/\s*意图[：:]\s*([^\r\n]+)/u.exec(args.code);
+    const match = /^\s*(?:\/\/\s*@options:[^\r\n]*\r?\n)?\s*\/\/\s*(?:意图[：:]|intent:)\s*([^\r\n]+)/iu.exec(args.code);
     const intent = normalizeDisplaySummary(match?.[1]);
     if (intent) return intent;
   }
-  return fallbackIntent(name);
+  return fallbackIntent(name, language);
 }

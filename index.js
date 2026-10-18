@@ -4,16 +4,19 @@ import { IntentDecorator } from "./src/intent.js";
 import { installRegistryBridge } from "./src/registry-bridge.js";
 import { nestedResultReceipt, saveDisplayPayload, toolStartReceipt } from "./src/activity-journal.js";
 import { addPublicActivityGuideline } from "./src/thinking-intent.js";
+import { messages, resolveLanguage } from "./src/locale.js";
 
 export default function mindfold(pi) {
-  const store = new ActivityStore();
+  const language = resolveLanguage();
+  const text = messages(language);
+  const store = new ActivityStore({ language });
   const controller = new CompactController(store);
-  const decorator = new IntentDecorator();
+  const decorator = new IntentDecorator({ language });
   const disposeRegistry = installRegistryBridge(decorator, (registry) => { controller.definitions = registry ?? new Map(); });
 
   const restore = (_event, ctx) => {
     controller.clear();
-    store.restore(ctx.sessionManager.buildContextEntries());
+    store.restore(ctx.sessionManager.buildContextEntries(), ctx.sessionManager.getSessionDir());
     controller.attach(ctx);
   };
   pi.on("session_start", restore);
@@ -25,7 +28,7 @@ export default function mindfold(pi) {
   });
   pi.on("before_agent_start", (event) => {
     if (!store.current || store.current.settled) store.begin();
-    addPublicActivityGuideline(event);
+    addPublicActivityGuideline(event, language);
   });
   pi.on("message_start", (event) => {
     if (event.message.role === "user" && store.current?.finalResponse) store.begin();
@@ -71,25 +74,25 @@ export default function mindfold(pi) {
   pi.on("session_shutdown", () => { controller.dispose(); disposeRegistry(); });
 
   pi.registerShortcut("ctrl+alt+t", {
-    description: "展开或折叠当前对话的思考与工具记录",
+    description: text.shortcut,
     handler: () => controller.toggle(),
   });
   const commandHandler = async (args, ctx) => {
     const action = args.trim() || "toggle";
     if (action === "status") {
-      ctx.ui.notify(`Mindfold：${store.groups.length} 次对话，${decorator.originals.size} 个工具已启用中文意图${decorator.skipped.size ? `；保留原参数约定：${[...decorator.skipped].join(", ")}` : ""}`, "info");
+      ctx.ui.notify(text.status(store.groups.length, decorator.originals.size, [...decorator.skipped]), "info");
     } else if (["toggle", "expand", "collapse"].includes(action)) {
       controller.toggle(action === "toggle" ? undefined : action === "expand");
     } else if (action === "prev" || action === "next") controller.select(action === "prev" ? -1 : 1);
-    else ctx.ui.notify("用法：/mindfold [toggle|expand|collapse|prev|next|status]", "warning");
+    else ctx.ui.notify(text.usage, "warning");
   };
 
   pi.registerCommand("mindfold", {
-    description: "思考与工具显示：toggle / expand / collapse / prev / next / status",
+    description: text.command,
     handler: commandHandler,
   });
   pi.registerCommand("compact-thinking", {
-    description: "思考与工具显示（/mindfold 别名）：toggle / expand / collapse / prev / next / status",
+    description: text.alias,
     handler: commandHandler,
   });
 }

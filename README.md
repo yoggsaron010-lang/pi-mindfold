@@ -2,10 +2,10 @@
 
 [简体中文](./README.zh-CN.md)
 
-> A sleek, intent-aware interaction plugin for [Pi Coding Agent](https://github.com/earendil-works/pi) (Pi 1.0.0 – 1.3.0+).  
+> A sleek, intent-aware interaction plugin for [Pi Coding Agent](https://github.com/earendil-works/pi) (tested on Pi 1.0.0 and 1.3.0).  
 > Collapses lengthy reasoning streams and stacked tool outputs into a **single active focus**, displays model-written intent in real-time, and provides one-click lossless expansion for full execution history.
 
-[![npm version](https://img.shields.io/badge/version-0.2.2-blue.svg)](package.json)
+[![npm version](https://img.shields.io/npm/v/pi-mindfold.svg)](https://www.npmjs.com/package/pi-mindfold)
 [![Pi Compatibility](https://img.shields.io/badge/pi-1.0.0%20--%201.3.0-success.svg)](COMPATIBILITY.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -25,11 +25,11 @@ When using coding agents with deep reasoning models:
 - **Single Active Focus (Default Collapsed Mode)**
   - **Thinking Phase**: Hidden thoughts are collapsed into a clean italic label:
     - Initial state: `Thinking`
-    - When the model emits a public progress line: `Thinking — Verifying reload recovery logic` (updated dynamically).
+    - When the model emits a public progress line: `Thinking — 核对重载恢复逻辑` (updated dynamically; see [Intent language](#intent-language)).
   - **Tool Phase**: Immediately replaces the thinking placeholder with the active tool card and its human-readable intent:
     ```text
     read src/index.ts
-      ↳ Inspect module exports and route declarations
+      ↳ 检查模块导出与路由声明
     ```
   - **Parallel Concurrency**: Tracks execution order by actual start time. Late-finishing sibling calls never revert or scramble the current active display.
   - **Clean Finalization**: Automatically removes the `Thinking` placeholder upon reply completion. If tools were run, the last tool card and its intent remain pinned without cluttering the chat; otherwise, no empty placeholder is left behind.
@@ -48,12 +48,37 @@ When using coding agents with deep reasoning models:
   - Adapts the `displaySummary` convention from [pi-tool-explain](https://github.com/Nyarlathoteppppp/pi-tool-explain). The current model writes intent directly inside its normal tool call payload.
   - **No secondary model calls, no separate API keys, and no added latency.**
   - Strips intent fields before forwarding parameters to actual tool implementations, preserving clean argument semantics.
-  - Preserves native OpenAI Grammar Constrained Sampling and host tool-reachability contracts for `codemode`, extracting top-level intent from leading `// 意图：...` source comments.
-  - **Multilingual Support**: Supports both English and localized prompts (e.g., Simplified Chinese). See [README.zh-CN.md](./README.zh-CN.md) for Chinese documentation.
+  - Preserves native OpenAI Grammar Constrained Sampling and host tool-reachability contracts for `codemode`, extracting top-level intent from a leading `// 意图：...` (or `// Intent: ...`) source comment.
 
 - **Session Persistence & Large-Payload Sidecar**
   - Session `/reload`, `/resume`, and `/fork` seamlessly restore intents and nested tool hierarchies.
-  - Outputs exceeding 64 KB are automatically saved to a content-addressed `.mindfold/` sidecar folder with SHA-256 integrity verification, keeping `.jsonl` session files lightweight and fast.
+  - Outputs exceeding 64 KB are automatically saved to a content-addressed `.mindfold/` sidecar folder inside the session directory, with SHA-256 integrity verification, keeping `.jsonl` session files lightweight and fast. Keep `.mindfold/` together with the session files when backing up or moving sessions.
+
+### Intent language
+
+Intents default to **Simplified Chinese** (`zh-CN`). To get English intents, set `PI_MINDFOLD_LANG=en` in the environment **before starting Pi**:
+
+```bash
+# macOS / Linux (add to ~/.zshrc or ~/.bashrc to keep it)
+export PI_MINDFOLD_LANG=en
+pi
+```
+
+```powershell
+# Windows PowerShell (use `setx PI_MINDFOLD_LANG en` to keep it)
+$env:PI_MINDFOLD_LANG = "en"
+pi
+```
+
+| | `zh-CN` (default) | `en` |
+|---|---|---|
+| Tool `displaySummary` | `检查模块导出与路由声明` | `Inspect module exports and route declarations` |
+| Public progress line | `活动意图：核对重载恢复逻辑` | `Activity intent: Verify reload recovery logic` |
+| codemode comment | `// 意图：批量检查入口文件` | `// Intent: Batch check entry files` |
+| Fallback when the model omits an intent | `读取文件` | `Read file` |
+| `/mindfold status`, command and shortcut descriptions | Chinese | English |
+
+`en`, `en-US`, `en_GB` and similar values select English; any other value keeps `zh-CN`. The language is read once when the extension loads, so restart Pi after changing it (`/reload` keeps the old process environment). Intents already recorded in a session stay in the language they were written in. Both `// 意图：` and `// Intent:` codemode comments are recognised in either mode. See [README.zh-CN.md](./README.zh-CN.md) for Chinese documentation.
 
 ---
 
@@ -79,9 +104,13 @@ When using coding agents with deep reasoning models:
 
 ## Installation
 
-### From GitHub Repository
+### From npm
 
-In your terminal or Pi shell:
+```bash
+pi install npm:pi-mindfold
+```
+
+### From GitHub Repository
 
 ```bash
 pi install git:github.com/yoggsaron010-lang/pi-mindfold
@@ -105,11 +134,12 @@ cd pi-mindfold
 pi install .
 ```
 
-To remove:
+To remove, pass the same source you installed from:
 
 ```bash
-pi remove git:github.com/yoggsaron010-lang/pi-mindfold
-# or: pi remove C:/path/to/pi-mindfold
+pi remove npm:pi-mindfold
+# or: pi remove git:github.com/yoggsaron010-lang/pi-mindfold
+# or: pi remove /absolute/path/to/pi-mindfold
 ```
 
 ---
@@ -151,17 +181,22 @@ Tested and validated on Windows and POSIX environments against official Pi distr
 
 | Host Version | Automated Suite | Interactive TUI | Notes |
 |---|---|---|---|
-| **Pi 1.3.0** | **64 passed, 0 failed** | Fullscreen mouse + focus verified | Active official release; supports `reachesTools` |
-| **Pi 1.0.0** | **64 passed, 0 failed** | Fullscreen mouse + focus verified | Backward compatible |
+| **Pi 1.3.0** | **All passed** | Fullscreen mouse + focus verified | Active official release; supports `reachesTools` |
+| **Pi 1.0.0** | **All passed** | Fullscreen mouse + focus verified | Backward compatible |
 
-Run the verification test suite locally:
+The tests import the real Pi host modules instead of a second copy. They locate Pi's managed install (`~/.pi/agent/install/current-version`) automatically; for a global npm or Homebrew install, point `COMPACT_PI_ROOT` at the `@earendil-works/pi-coding-agent` package directory:
 
 ```bash
-npm test
+COMPACT_PI_ROOT="$(npm root -g)/@earendil-works/pi-coding-agent" npm test
 npm run check
 ```
 
 Detailed test evidence and lifecycle benchmarks are documented in [COMPATIBILITY.md](./COMPATIBILITY.md) and [VERIFICATION.md](./VERIFICATION.md).
+
+### Known limitations
+
+- One active Pi session per process. Running several SDK `AgentSession`s concurrently in one process is not supported.
+- Sessions recorded before start receipts existed (pre-0.1.1) cannot reconstruct the exact start order of parallel tool calls; they still load.
 
 ---
 

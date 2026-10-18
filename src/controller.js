@@ -4,6 +4,7 @@ import {
   patchAggregateViewport, recordAggregateViewportRegion, releaseAggregateViewportRegion,
   resetAggregateViewportOwner, restoreAggregateViewport, toggleAggregateViewportRun,
 } from "../vendor/pi-tool-explain/aggregate-viewport.ts";
+import { messages } from "./locale.js";
 import { installRenderBridge } from "./render-bridge.js";
 
 export class CompactController {
@@ -68,7 +69,7 @@ export class CompactController {
     if (!run) {
       run = {
         owner: this, id: String(group.id), isValid: () => this.store.groups.includes(group),
-        isExpanded: () => group.expanded, label: () => `对话 ${group.id}`,
+        isExpanded: () => group.expanded, label: () => messages(this.store.language).dialogue(group.id),
         toggle: () => { group.expanded = !group.expanded; this.store.selected = group; this.changed(); },
       };
       this.runs.set(group, run);

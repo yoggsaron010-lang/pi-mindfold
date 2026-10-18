@@ -1,6 +1,16 @@
 import { normalizeDisplaySummary } from "../vendor/pi-tool-explain/display-summary.js";
+import { messages, resolveLanguage } from "./locale.js";
 
-export const PUBLIC_ACTIVITY_GUIDELINE = 'When providing a brief public progress update for a work phase, start that assistant text with its own plain-text line "活动意图：简短中文目的". Use Simplified Chinese, at most 96 characters, and no secrets. This is a public activity description, not reasoning or a request to disclose hidden thought. Provide at most one such line per phase when you can; do not prepend it to a final-only answer or replace the requested answer with a status line. The UI can show Thinking until a public description arrives.';
+const ACTIVITY_MARKERS = {
+  "zh-CN": { labels: ["活动意图：", "活动意图:"], pattern: /^\s*活动意图[：:][ \t]*([^\r\n]*)(?:\r?\n|$)/u },
+  en: { labels: ["activity intent:"], pattern: /^\s*activity intent:[ \t]*([^\r\n]*)(?:\r?\n|$)/iu },
+};
+function activityMarker(language) { return ACTIVITY_MARKERS[language] ?? ACTIVITY_MARKERS["zh-CN"]; }
+
+export function publicActivityGuideline(language = resolveLanguage()) { return messages(language).activityGuideline; }
+
+/** Simplified Chinese guideline, kept for callers of the 0.2.x export. */
+export const PUBLIC_ACTIVITY_GUIDELINE = messages("zh-CN").activityGuideline;
 
 export function assistantPublicText(message) {
   return (message?.content ?? []).filter((block) => block.type === "text" && typeof block.text === "string")
@@ -8,16 +18,16 @@ export function assistantPublicText(message) {
 }
 
 /** Only explicit public text can supply an activity intent. Never read thinking. */
-export function readPublicActivity(message, { offset = 0, complete = false } = {}) {
+export function readPublicActivity(message, { offset = 0, complete = false, language = resolveLanguage() } = {}) {
   const source = assistantPublicText(message);
   const text = source.slice(offset);
   if (!text.trim()) return { kind: "empty" };
-  const trimmed = text.trimStart();
-  const labels = ["活动意图：", "活动意图:"];
-  if (!complete && labels.some((label) => label.startsWith(trimmed))) {
+  const trimmed = text.trimStart().toLowerCase();
+  const marker = activityMarker(language);
+  if (!complete && marker.labels.some((label) => label.startsWith(trimmed))) {
     return { kind: "pending", range: { start: offset, end: source.length } };
   }
-  const match = /^\s*活动意图[：:][ \t]*([^\r\n]*)(?:\r?\n|$)/u.exec(text);
+  const match = marker.pattern.exec(text);
   if (!match) return { kind: "body" };
   // Wait for a line terminator or text_end before publishing an unfinished phrase.
   if (!complete && !match[0].endsWith("\n")) {
@@ -48,9 +58,10 @@ export function compactAssistantContent(message, range) {
   });
 }
 
-export function addPublicActivityGuideline(event) {
+export function addPublicActivityGuideline(event, language = resolveLanguage()) {
   const options = event?.systemPromptOptions;
   if (!options) return;
   const guidelines = options.promptGuidelines ??= [];
-  if (!guidelines.includes(PUBLIC_ACTIVITY_GUIDELINE)) guidelines.push(PUBLIC_ACTIVITY_GUIDELINE);
+  const guideline = publicActivityGuideline(language);
+  if (!guidelines.includes(guideline)) guidelines.push(guideline);
 }

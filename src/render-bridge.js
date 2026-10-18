@@ -103,12 +103,12 @@ export function installRenderBridge(controller) {
     return function (args, theme, context) {
       const previous = context.lastComponent;
       const native = render(args, theme, previous instanceof IntentCall ? { ...context, lastComponent: previous.native } : context);
-      return new IntentCall(native, () => intentFor(component.args, component.toolName), theme);
+      return new IntentCall(native, () => intentFor(component.args, component.toolName, controller.store.language), theme);
     };
   });
   patch(tool, "createCallFallback", (original) => function () {
     const native = original.call(this);
-    return enabled && controller.theme ? new IntentCall(native, () => intentFor(this.args, this.toolName), controller.theme) : native;
+    return enabled && controller.theme ? new IntentCall(native, () => intentFor(this.args, this.toolName, controller.store.language), controller.theme) : native;
   });
   patch(tool, "setExpanded", (original) => function (expanded) {
     if (!enabled || !mouseLocked.has(this)) return original.call(this, expanded);

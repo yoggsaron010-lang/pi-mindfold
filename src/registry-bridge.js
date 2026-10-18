@@ -8,7 +8,7 @@ export function installRegistryBridge(decorator, onRegistry) {
   const prototype = AgentSession.prototype;
   prototype[OWNER]?.dispose();
   const original = prototype._refreshToolRegistry;
-  if (typeof original !== "function") throw new Error("Compact Thinking requires Pi 1.0's tool registry adapter.");
+  if (typeof original !== "function") throw new Error("pi-mindfold requires Pi 1.0's tool registry adapter.");
   let enabled = true;
   const patched = function (...args) {
     if (enabled) {
