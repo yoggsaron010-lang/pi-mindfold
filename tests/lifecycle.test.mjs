@@ -18,6 +18,7 @@ test("real session.reload rebuilds history before session_start without losing c
   sessionManager.appendMessage({ role: "assistant", timestamp: 2, stopReason: "toolUse", content: [{ type: "toolCall", id: "history", name: "read", arguments: args }] });
   sessionManager.appendMessage({ role: "toolResult", timestamp: 3, toolCallId: "history", toolName: "read", content: [{ type: "text", text: "RELOAD_HISTORY_OUTPUT" }], isError: false });
   sessionManager.appendMessage({ role: "assistant", timestamp: 4, stopReason: "stop", content: [{ type: "text", text: "first done" }] });
+  sessionManager.appendCustomEntry("mindfold.turn-intent", { summary: "检查重载前的历史工具" });
   const retainedUser = sessionManager.appendMessage({ role: "user", content: [{ type: "text", text: "second request" }], timestamp: 5 });
   sessionManager.appendMessage({ role: "assistant", timestamp: 6, stopReason: "stop", content: [{ type: "text", text: "second done" }] });
   const resourceLoader = new DefaultResourceLoader({ cwd: directory, agentDir: directory, settingsManager,
@@ -38,6 +39,10 @@ test("real session.reload rebuilds history before session_start without losing c
       historical.updateResult({ content: [{ type: "text", text: "RELOAD_HISTORY_OUTPUT" }], isError: false });
     } });
     assert.match(clean(historical.render(80)), /↳ 检查重载前的历史/);
+    await session.prompt("/mindfold turns");
+    assert.match(clean(widget.render(80)), /检查重载前的历史工具/);
+    assert.match(clean(widget.render(80)), /second request/);
+    await session.prompt("/mindfold turns");
     await session.prompt("/mindfold prev");
     await session.prompt("/mindfold expand");
     assert.match(clean(historical.render(80)), /RELOAD_HISTORY_OUTPUT/);
@@ -49,6 +54,9 @@ test("real session.reload rebuilds history before session_start without losing c
     await session.prompt("/mindfold status");
     assert.match(notices.at(-1), /1 次对话/);
     assert.doesNotMatch(clean(widget.render(80)), /2\/2|1\/2/);
+    await session.prompt("/mindfold turns");
+    assert.match(clean(widget.render(80)), /second request/);
+    assert.doesNotMatch(clean(widget.render(80)), /检查重载前的历史工具/);
     assert.deepEqual(errors, []);
   } finally {
     await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });

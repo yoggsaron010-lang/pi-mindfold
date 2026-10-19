@@ -1,210 +1,182 @@
 # pi-mindfold
 
-[简体中文](./README.zh-CN.md)
-
-> A sleek, intent-aware interaction plugin for [Pi Coding Agent](https://github.com/earendil-works/pi) (tested on Pi 1.0.0 and 1.3.0).  
-> Collapses lengthy reasoning streams and stacked tool outputs into a **single active focus**, displays model-written intent in real-time, and provides one-click lossless expansion for full execution history.
+Keep Pi conversations readable, then jump straight to the answer you need.
 
 [![npm version](https://img.shields.io/npm/v/pi-mindfold.svg)](https://www.npmjs.com/package/pi-mindfold)
-[![Pi Compatibility](https://img.shields.io/badge/pi-1.0.0%20--%201.3.0-success.svg)](COMPATIBILITY.md)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Pi compatibility](https://img.shields.io/badge/Pi-1.0.0%20%7C%201.3.0-blue.svg)](./COMPATIBILITY.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
----
+[简体中文](./README.zh-CN.md) · [Features](#features) · [Install and run](#install-and-run) · [Controls](#controls)
 
-## The Problem
+Mindfold is an extension for [Pi Coding Agent](https://github.com/earendil-works/pi). It folds long thinking and tool output into one current activity, shows why that activity is happening, and keeps the assistant's response readable. When a conversation grows, open **Turns** to find an earlier request by its purpose and jump to its answer.
 
-When using coding agents with deep reasoning models:
-1. **Endless Thinking Scrolls**: Reasoning chains can span dozens or hundreds of lines, repeatedly pushing conversational context off-screen.
-2. **Tool Output Stacking**: Sequential calls to `ls`, `read`, `grep`, and `edit` stack raw execution blocks vertically, burying the final assistant reply.
-3. **Black-box Tool Execution**: Native collapsed tool displays show only raw commands and truncated output, providing no immediate clarity on *why* a tool is being invoked.
+## See it in action
 
----
+### Collapse: follow the current activity
 
-## Key Features
-
-- **Single Active Focus (Default Collapsed Mode)**
-  - **Thinking Phase**: Hidden thoughts are collapsed into a clean italic label:
-    - Initial state: `Thinking`
-    - When the model emits a public progress line: `Thinking — 核对重载恢复逻辑` (updated dynamically; see [Intent language](#intent-language)).
-  - **Tool Phase**: Immediately replaces the thinking placeholder with the active tool card and its human-readable intent:
-    ```text
-    read src/index.ts
-      ↳ 检查模块导出与路由声明
-    ```
-  - **Parallel Concurrency**: Tracks execution order by actual start time. Late-finishing sibling calls never revert or scramble the current active display.
-  - **Clean Finalization**: Automatically removes the `Thinking` placeholder upon reply completion. If tools were run, the last tool card and its intent remain pinned without cluttering the chat; otherwise, no empty placeholder is left behind.
-  - **Pristine Markdown Output**: Assistant markdown text always remains visible in the main chat viewport.
-
-- **One-Click Lossless Expansion (`[Expanded]` Mode)**
-  - A responsive toggle button is pinned directly above the input editor:
-    ```text
-    [Collapse]  ‹ 2/2 ›  Ctrl+Alt+T
-    > 
-    ```
-  - Clicking the button or pressing `Ctrl+Alt+T` restores the complete chronological timeline: all raw reasoning blocks, every tool invocation, full tool outputs, and child `codemode` executions.
-  - **Viewport & Focus Preservation**: In Pi's fullscreen TUI, toggling expansion anchors your scroll position to the current dialogue header without stealing text input focus.
-
-- **Zero-Extra-Inference Intent Engine**
-  - Adapts the `displaySummary` convention from [pi-tool-explain](https://github.com/Nyarlathoteppppp/pi-tool-explain). The current model writes intent directly inside its normal tool call payload.
-  - **No secondary model calls, no separate API keys, and no added latency.**
-  - Strips intent fields before forwarding parameters to actual tool implementations, preserving clean argument semantics.
-  - Preserves native OpenAI Grammar Constrained Sampling and host tool-reachability contracts for `codemode`, extracting top-level intent from a leading `// 意图：...` (or `// Intent: ...`) source comment.
-
-- **Session Persistence & Large-Payload Sidecar**
-  - Session `/reload`, `/resume`, and `/fork` seamlessly restore intents and nested tool hierarchies.
-  - Outputs exceeding 64 KB are automatically saved to a content-addressed `.mindfold/` sidecar folder inside the session directory, with SHA-256 integrity verification, keeping `.jsonl` session files lightweight and fast. Keep `.mindfold/` together with the session files when backing up or moving sessions.
-
-### Intent language
-
-Intents default to **Simplified Chinese** (`zh-CN`). To get English intents, set `PI_MINDFOLD_LANG=en` in the environment **before starting Pi**:
-
-```bash
-# macOS / Linux (add to ~/.zshrc or ~/.bashrc to keep it)
-export PI_MINDFOLD_LANG=en
-pi
-```
-
-```powershell
-# Windows PowerShell (use `setx PI_MINDFOLD_LANG en` to keep it)
-$env:PI_MINDFOLD_LANG = "en"
-pi
-```
-
-| | `zh-CN` (default) | `en` |
-|---|---|---|
-| Tool `displaySummary` | `检查模块导出与路由声明` | `Inspect module exports and route declarations` |
-| Public progress line | `活动意图：核对重载恢复逻辑` | `Activity intent: Verify reload recovery logic` |
-| codemode comment | `// 意图：批量检查入口文件` | `// Intent: Batch check entry files` |
-| Fallback when the model omits an intent | `读取文件` | `Read file` |
-| `/mindfold status`, command and shortcut descriptions | Chinese | English |
-
-`en`, `en-US`, `en_GB` and similar values select English; any other value keeps `zh-CN`. The language is read once when the extension loads, so restart Pi after changing it (`/reload` keeps the old process environment). Intents already recorded in a session stay in the language they were written in. Both `// 意图：` and `// Intent:` codemode comments are recognised in either mode. See [README.zh-CN.md](./README.zh-CN.md) for Chinese documentation.
-
----
-
-## Visual Comparison
-
-### Collapsed Mode (Default)
-
-> *In collapsed mode, prior reasoning and previous tool runs are folded into a single active focus. Only the latest invoked tool card and its real-time intent are displayed above the prompt.*
+Thinking and tool cards replace each other as work progresses. Earlier activity stays folded while the assistant's text remains visible.
 
 <p align="center">
-  <img src="./assets/demo-collapsed.png" alt="Collapsed Mode - Single Active Focus" width="850" />
+  <img src="./assets/demo-collapse.gif" alt="Collapse demo: thinking and tool cards replace each other while the final response remains visible" width="960">
 </p>
 
-### Expanded Mode (After toggle)
+### Turns: find an earlier answer
 
-> *Clicking `[Collapse]` (or pressing `Ctrl+Alt+T`) restores the entire chronological execution history: all raw thinking steps, sequential tool invocations, and full terminal outputs.*
+Open **Turn History**, choose a request by its short intent summary, and jump to that turn's response.
 
 <p align="center">
-  <img src="./assets/demo-expanded.png" alt="Expanded Mode - Full Historical Replay" width="850" />
+  <img src="./assets/demo-turns.gif" alt="Turns demo: open the request directory and jump between three earlier responses" width="960">
 </p>
 
----
+## Features
 
-## Installation
+- **One current activity** — see thinking or the latest started tool, with a short purpose label.
+- **Readable answers** — keep assistant text visible while earlier thinking and tool cards stay folded.
+- **Full history on demand** — expand a turn's received thinking, tools, results, and nested tool calls.
+- **Useful scroll positions** — expand at the turn's end; use `↑` to revisit its beginning.
+- **A directory of requests** — browse intent summaries and jump directly to earlier answers.
+- **Automatic intent language** — Chinese requests get Chinese labels; other languages get English labels.
+- **Session recovery** — retain saved intent summaries and tool records when reloading or resuming.
+- **No extra model requests** — generate intent labels within normal responses and tool calls.
 
-### From npm
+## Install and run
 
-```bash
+### 1. Install the extension
+
+You need Node.js **22.19 or newer** and a working [Pi CLI installation](https://github.com/earendil-works/pi#readme). Mindfold is tested with Pi **1.0.0** and **1.3.0**, using one active CLI session per process.
+
+```sh
 pi install npm:pi-mindfold
 ```
 
-### From GitHub Repository
+This installs the latest **published npm release**. To run the features in a local checkout, install that checkout instead:
 
-```bash
-pi install git:github.com/yoggsaron010-lang/pi-mindfold
-```
-
-Then reload Pi:
-
-```text
-/reload
-```
-
-*(Or restart Pi if you recently upgraded the host Pi binary).*
-
-### Local Installation
-
-Clone this repository and install from the local directory:
-
-```bash
-git clone https://github.com/yoggsaron010-lang/pi-mindfold.git
+```sh
 cd pi-mindfold
 pi install .
 ```
 
-To remove, pass the same source you installed from:
+To install the GitHub version directly:
 
-```bash
-pi remove npm:pi-mindfold
-# or: pi remove git:github.com/yoggsaron010-lang/pi-mindfold
-# or: pi remove /absolute/path/to/pi-mindfold
+```sh
+pi install git:github.com/yoggsaron010-lang/pi-mindfold
 ```
 
----
+Choose one installation source so Pi loads one copy of Mindfold.
 
-## Controls & Usage
+### 2. Start Pi
 
-| Trigger | Action |
-|---|---|
-| Click `[Collapse]` / `[Expanded]` | Toggle collapsed/expanded state for the selected dialogue |
-| `Ctrl+Alt+T` | Keyboard shortcut to toggle state (works in both fullscreen and regular modes) |
-| Click `‹` / `›` | Navigate to previous / next dialogue turns |
-| `/mindfold` or `/mindfold toggle` | Slash command to toggle current turn |
-| `/mindfold expand` | Expand current turn history |
-| `/mindfold collapse` | Collapse current turn to active item |
-| `/mindfold prev` / `/mindfold next` | Switch selected dialogue turn |
-| `/mindfold status` | Inspect decorated tools, turn count, and schemas retaining original parameters |
+```sh
+pi
+```
 
-> **Note on Command Names**: Pi provides a built-in `/compact` command for manual context summarization. This plugin registers as `/mindfold` (with `/compact-thinking` retained as an alias) to avoid collisions.
+If Pi is already running, enter `/reload` to load the extension. Restart Pi if you also upgraded Pi itself. Use your existing Pi model connection; Mindfold needs no additional API key.
 
----
+For clickable buttons, the Turns menu, and automatic scroll positioning, use Pi's **fullscreen** mode. If needed, set `"tuiMode": "fullscreen"` in `~/.pi/agent/settings.json` and restart Pi. On Windows, that file is at `%USERPROFILE%\.pi\agent\settings.json`. Regular mode supports folding through the shortcut and slash commands; it leaves scrolling to the terminal.
 
-## Supported Tools
+### 3. Send a request
 
-The intent engine automatically intercepts and decorates tools defining standard object parameter schemas:
+For example, ask Pi:
 
-- **Built-in Tools**: `read`, `bash`, `powershell`, `edit`, `write`, `grep`, `find`, `ls`
-- **Shell & Scripting**: `nushell` / `nu`, `codemode` (supports leading intent comments and nested child tools)
-- **Web & Search**: `web_search`, `google_search`, `fetch_content`, `get_search_content`, `source_check`
-- **Task & Media**: `todo`, `generate_image`, `image_generate`
-- **Custom & MCP Tools**: All registered MCP servers and SDK-defined tools
+```text
+Inspect this project and explain how to run its tests.
+```
 
-Tools that already define their own `displaySummary` or use non-object parameter schemas retain their exact original contracts.
+The control bar appears above the editor:
 
----
+```text
+[Collapse]  ‹ 1/3 ›  [Turns]  Ctrl+Alt+T
+```
 
-## Compatibility & Verification
+`1/3` means turn 1 is selected out of 3 available turns. A turn covers one user request and the tool work needed to answer it.
 
-Tested and validated on Windows and POSIX environments against official Pi distributions:
+## Use Mindfold
 
-| Host Version | Automated Suite | Interactive TUI | Notes |
-|---|---|---|---|
-| **Pi 1.3.0** | **All passed** | Fullscreen mouse + focus verified | Active official release; supports `reachesTools` |
-| **Pi 1.0.0** | **All passed** | Fullscreen mouse + focus verified | Backward compatible |
+### Follow work in Collapse mode
 
-The tests import the real Pi host modules instead of a second copy. They locate Pi's managed install (`~/.pi/agent/install/current-version`) automatically; for a global npm or Homebrew install, point `COMPACT_PI_ROOT` at the `@earendil-works/pi-coding-agent` package directory:
+New requests start collapsed. Thinking first appears as `Thinking`; when the model supplies a public progress label, it becomes something like:
 
-```bash
-COMPACT_PI_ROOT="$(npm root -g)/@earendil-works/pi-coding-agent" npm test
+```text
+Thinking — Check the test setup
+```
+
+A tool starting replaces that label with its tool card and intent:
+
+```text
+read package.json
+  ↳ Find the test command
+```
+
+For parallel tools, the latest started tool remains the current activity even if an older one finishes later. When the request finishes, the thinking placeholder disappears and the last tool card remains beside the assistant's response.
+
+If the model provides no progress label, `Thinking` stays as-is. Tool calls without an intent use a short fallback label.
+
+### Expand a turn and revisit its beginning
+
+Click `[Collapse]` or press `Ctrl+Alt+T` to reveal the selected turn's history:
+
+```text
+[Expanded] ↑  ‹ 1/3 ›  [Turns]  Ctrl+Alt+T
+```
+
+Expansion scrolls to **that turn's end**, so you can read the output immediately. Click `↑` to go back to its earliest thinking or tool activity. Collapse again to keep your current position in the response where possible; when viewing thinking or tools, collapsing returns to the turn's end. The editor keeps focus.
+
+Expansion shows the thinking and tool output Pi actually received. Content already truncated by a tool or withheld by a model is unavailable.
+
+### Browse requests with Turns
+
+Click `[Turns]` or enter `/mindfold turns`. The directory opens upward, showing a turn number and a one-sentence description of the user's goal.
+
+- Click a row, or use `↑` / `↓` and `Enter`, to jump to its response.
+- Use the mouse wheel to browse; the menu shows up to eight entries at a time.
+- `●` marks the selected turn. `Esc` closes the menu.
+- Typing closes the menu and continues in the editor.
+
+New turn summaries come from the model's normal response. Older turns and responses without a summary show a short preview of the original user message. Labels use a few output tokens and require no separate model call.
+
+For adjacent turns, click `‹` or `›`. Both the arrows and Turns entries jump to the **start of the response body**, preserving that turn's expanded or collapsed state. Navigation covers the active session branch and the turns retained after context compaction.
+
+## Controls
+
+| Action | Button or shortcut | Command |
+|---|---|---|
+| Toggle the selected turn | `[Collapse]` / `[Expanded]`, `Ctrl+Alt+T` | `/mindfold toggle` |
+| Expand and read the turn's end | Click `[Collapse]` | `/mindfold expand` |
+| Collapse the selected turn | Click `[Expanded]` | `/mindfold collapse` |
+| Go to the turn's beginning | `↑` beside `[Expanded]` | `/mindfold start` |
+| Jump to the previous / next answer | `‹` / `›` | `/mindfold prev`, `/mindfold next` |
+| Open or close the request directory | `[Turns]` | `/mindfold turns` |
+| Check extension status | — | `/mindfold status` |
+
+`/mindfold` alone also toggles the selected turn. `/compact-thinking` is an alias.
+
+## Resume, back up, or remove
+
+Resume a session through Pi as usual; Mindfold restores its available turn titles and saved tool records. When copying or backing up session files, **keep the `.mindfold/` folder alongside them**: large tool display records are stored there.
+
+To uninstall, pass the same source you installed from, then run `/reload` or restart Pi:
+
+```sh
+pi remove npm:pi-mindfold
+```
+
+For a GitHub installation, use `pi remove git:github.com/yoggsaron010-lang/pi-mindfold`. For a local installation, pass its directory path. Existing session records remain on disk.
+
+## Documentation and contributing
+
+See the [compatibility notes](./COMPATIBILITY.md), [verification notes](./VERIFICATION.md), and [Pi documentation](https://github.com/earendil-works/pi#readme). Report problems through [GitHub Issues](https://github.com/yoggsaron010-lang/pi-mindfold/issues) or submit a pull request.
+
+To check a local change, use Node.js 22.19+ with Pi installed:
+
+```sh
+npm test
 npm run check
 ```
 
-Detailed test evidence and lifecycle benchmarks are documented in [COMPATIBILITY.md](./COMPATIBILITY.md) and [VERIFICATION.md](./VERIFICATION.md).
+Tests find Pi's managed installation automatically. For another installation layout, set `COMPACT_PI_ROOT` to the installed `@earendil-works/pi-coding-agent` package directory before running `npm test`.
 
-### Known limitations
+## Credits and license
 
-- One active Pi session per process. Running several SDK `AgentSession`s concurrently in one process is not supported.
-- Sessions recorded before start receipts existed (pre-0.1.1) cannot reconstruct the exact start order of parallel tool calls; they still load.
+Thanks to [@Nyarlathoteppppp](https://github.com/Nyarlathoteppppp) and [pi-tool-explain](https://github.com/Nyarlathoteppppp/pi-tool-explain) for the intent and display code used by Mindfold. Upstream work includes [MasuRii's pi-tool-display](https://github.com/MasuRii) and [Mert Deveci's pi-tool-display-summary](https://github.com/mertdeveci5). See [THIRD_PARTY.md](./THIRD_PARTY.md) for notices.
 
----
-
-## Contributors & Third-Party Attributions
-
-- Special thanks to [@Nyarlathoteppppp](https://github.com/Nyarlathoteppppp) for the original [pi-tool-explain](https://github.com/Nyarlathoteppppp/pi-tool-explain) intent and display mechanics.
-- Upstream contributors: [MasuRii](https://github.com/MasuRii) (`pi-tool-display`) and [Mert Deveci](https://github.com/mertdeveci5) (`pi-tool-display-summary`).
-
-All vendored licenses and attribution notices are strictly preserved under `vendor/pi-tool-explain/` and [THIRD_PARTY.md](./THIRD_PARTY.md).
-
-This project is licensed under the [MIT License](./LICENSE).
+[MIT License](./LICENSE).

@@ -1,6 +1,6 @@
 {
   "name": "pi-mindfold",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Compact single-focus activity, reasoning fold, and real-time intent for Pi Coding Agent",
   "type": "module",
   "author": "yoggs",
@@ -37,11 +37,12 @@
     "README.md",
     "README.zh-CN.md",
     "COMPATIBILITY.md",
+    "VERIFICATION.md",
     "LICENSE",
     "THIRD_PARTY.md"
   ],
   "scripts": {
-    "test": "node --import ./tests/host-imports.mjs --test tests/*.test.mjs",
+    "test": "node --import ./tests/test-environment.mjs --import ./tests/host-imports.mjs --test tests/*.test.mjs",
     "check": "node scripts/check.mjs"
   },
   "peerDependencies": {

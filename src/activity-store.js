@@ -1,7 +1,8 @@
-import { getDisplaySummary } from "../vendor/pi-tool-explain/display-summary.js";
+import { getDisplaySummary, normalizeDisplaySummary } from "../vendor/pi-tool-explain/display-summary.js";
 import { loadDisplayPayload } from "./activity-journal.js";
 import { assistantPublicText, readPublicActivity } from "./thinking-intent.js";
-import { resolveLanguage } from "./locale.js";
+import { readTurnIntent, userPromptText } from "./turn-intent.js";
+import { requestLanguage, resolveLanguage } from "./locale.js";
 
 const messageKeys = new WeakMap();
 function fallbackMessageKey(message) {
@@ -23,7 +24,10 @@ export class ActivityStore {
   sequence = 0;
   messageSequence = 0;
   activeMessage;
-  constructor({ language = resolveLanguage() } = {}) { this.language = language; }
+  constructor({ language = resolveLanguage(), languageMode = language } = {}) {
+    this.language = language;
+    this.languageMode = languageMode;
+  }
 
   reset() {
     this.groups = [];
@@ -36,10 +40,15 @@ export class ActivityStore {
   }
 
   begin() {
-    const group = { id: ++this.sequence, expanded: false, settled: false, calls: [], declared: [], activity: undefined, lastTool: undefined };
+    const group = { id: ++this.sequence, language: this.language, expanded: false, settled: false, calls: [], declared: [], activity: undefined, lastTool: undefined };
     this.groups.push(group);
     this.current = this.selected = group;
     return group;
+  }
+
+  user(message) {
+    if (!this.current || this.current.settled) this.begin();
+    this.current.prompt ??= userPromptText(message.content);
   }
 
   assistant(message, streaming = false, newMessage = false) {
@@ -90,8 +99,13 @@ export class ActivityStore {
   text(message, { complete = false, finished = false } = {}) {
     const key = messageKey(message);
     const group = this.messages.get(key);
-    if (group?.activity?.kind !== "thinking" || group.activity.key !== key) return;
-    const status = readPublicActivity(message, { offset: group.thinkingTextOffset ?? 0, complete, language: this.language });
+    if (!group) return;
+    const label = readTurnIntent(message, { complete });
+    if (label.summary && !group.intentSummary) group.intentSummary = label.summary;
+    if (group.activity?.kind !== "thinking" || group.activity.key !== key) return;
+    if (label.pending) { group.thinkingStatusRange = label.range; return; }
+    const offset = Math.max(group.thinkingTextOffset ?? 0, label.range?.end ?? 0);
+    const status = readPublicActivity(message, { offset, complete, language: group.language });
     if (!finished && (status.kind === "empty" || status.kind === "pending" || status.kind === "status")) {
       group.thinkingStatusRange = status.range;
       if (status.kind === "status") group.activity.intent = status.intent;
@@ -181,6 +195,15 @@ export class ActivityStore {
   restore(entries, sessionDirectory) {
     this.reset();
     for (const entry of entries) {
+      if (entry.type === "custom" && entry.customType === "mindfold.turn-intent") {
+        const group = this.current;
+        const summary = normalizeDisplaySummary(entry.data?.summary);
+        if (group && summary) {
+          group.intentSummary = summary;
+          group.savedIntentSummary = true;
+        }
+        continue;
+      }
       if (entry.type === "custom" && (entry.customType === "mindfold.tool-start" || entry.customType === "compact-thinking.tool-start")) {
         this.startTool(loadDisplayPayload(entry.data, sessionDirectory, this.language));
         continue;
@@ -199,9 +222,15 @@ export class ActivityStore {
       if (entry.type !== "message") continue;
       const message = entry.message;
       if (message.role === "user") {
-        if (!this.current || this.current.settled) this.begin();
+        if (!this.current || this.current.settled) {
+          const prompt = userPromptText(message.content);
+          this.language = requestLanguage(prompt, this.languageMode, this.language);
+          this.begin();
+        }
+        this.user(message);
       } else if (message.role === "assistant") {
         const group = this.assistant(message, false, true);
+        this.text(message, { complete: true });
         this.finishPending(message);
         if (group && ["stop", "aborted", "error", "length"].includes(message.stopReason)) this.settle();
       } else if (message.role === "toolResult") {

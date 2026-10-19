@@ -1,8 +1,23 @@
 export const DEFAULT_LANGUAGE = "zh-CN";
 export const LANGUAGE_ENV = "PI_MINDFOLD_LANG";
 
-/** Tool schemas are decorated before CLI flags are readable, so the language
- * comes from the environment and is fixed for the lifetime of the extension. */
+/** Explicit environment settings override automatic selection for each request. */
+export function resolveLanguageMode(value = process.env[LANGUAGE_ENV]) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (/^en(?:[-_]|$)/u.test(normalized)) return "en";
+  if (/^zh(?:[-_]|$)/u.test(normalized)) return "zh-CN";
+  return "auto";
+}
+
+export function requestLanguage(prompt, mode = "auto", previous = DEFAULT_LANGUAGE) {
+  if (mode !== "auto") return mode;
+  if (typeof prompt !== "string" || !prompt.trim()) return previous;
+  // Kana and Hangul distinguish common Japanese/Korean text that also uses Han.
+  const chinese = /\p{Script=Han}/u.test(prompt) && !/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(prompt);
+  return chinese ? "zh-CN" : "en";
+}
+
+/** Initial UI language before a user request selects the automatic language. */
 export function resolveLanguage(value = process.env[LANGUAGE_ENV]) {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (normalized === "en" || normalized.startsWith("en-") || normalized.startsWith("en_")) return "en";
@@ -22,9 +37,9 @@ const zh = {
   missingPayloadIntent: "原始显示数据不可用",
   dialogue: (id) => `对话 ${id}`,
   shortcut: "展开或折叠当前对话的思考与工具记录",
-  command: "思考与工具显示：toggle / expand / collapse / prev / next / status",
-  alias: "思考与工具显示（/mindfold 别名）：toggle / expand / collapse / prev / next / status",
-  usage: "用法：/mindfold [toggle|expand|collapse|prev|next|status]",
+  command: "思考与工具显示：toggle / expand / collapse / prev / next / turns / start / status",
+  alias: "思考与工具显示（/mindfold 别名）：toggle / expand / collapse / prev / next / turns / start / status",
+  usage: "用法：/mindfold [toggle|expand|collapse|prev|next|turns|start|status]",
   status: (groups, tools, skipped) => `Mindfold：${groups} 次对话，${tools} 个工具已启用中文意图${skipped.length ? `；保留原参数约定：${skipped.join(", ")}` : ""}`,
 };
 
@@ -41,9 +56,9 @@ const en = {
   missingPayloadIntent: "Saved display data unavailable",
   dialogue: (id) => `Dialogue ${id}`,
   shortcut: "Expand or collapse thinking and tool history for the current dialogue",
-  command: "Thinking and tool display: toggle / expand / collapse / prev / next / status",
-  alias: "Thinking and tool display (alias of /mindfold): toggle / expand / collapse / prev / next / status",
-  usage: "Usage: /mindfold [toggle|expand|collapse|prev|next|status]",
+  command: "Thinking and tool display: toggle / expand / collapse / prev / next / turns / start / status",
+  alias: "Thinking and tool display (alias of /mindfold): toggle / expand / collapse / prev / next / turns / start / status",
+  usage: "Usage: /mindfold [toggle|expand|collapse|prev|next|turns|start|status]",
   status: (groups, tools, skipped) => `Mindfold: ${groups} dialogue(s), ${tools} tool(s) with English intent${skipped.length ? `; original parameter contracts kept: ${skipped.join(", ")}` : ""}`,
 };
 

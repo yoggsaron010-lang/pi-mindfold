@@ -51,6 +51,7 @@ type RunGeometry = {
 	title?: number;
 	end: number;
 	components: Set<object>;
+	rows: Map<object, number>;
 	expanded: boolean;
 };
 type Ledger = Map<object, Map<string, RunGeometry>>;
@@ -72,6 +73,7 @@ type RendererState = {
 	inRender: boolean;
 };
 type Selection = { state: RendererState; control: AggregateViewportControl };
+type ToggleAnchor = { position: "end" } | { position: "body"; component: object; offset(): number | undefined };
 type Transaction = {
 	state: RendererState;
 	viewport: Viewport;
@@ -79,6 +81,7 @@ type Transaction = {
 	generation: number;
 	expanded: boolean;
 	desiredRow: number;
+	anchor?: ToggleAnchor;
 };
 
 const HOOK = Symbol.for("@zhcsyncer/pi-tool-display-intent/aggregate-viewport");
@@ -121,9 +124,10 @@ function addRegion(ledger: Ledger, component: object, region: RecordedRegion, ro
 	if (!runs) ledger.set(region.run.owner, runs = new Map());
 	let geometry = runs.get(region.run.id);
 	if (!geometry) runs.set(region.run.id, geometry = {
-		run: region.run, end: 0, components: new Set(), expanded: region.run.isExpanded(),
+		run: region.run, end: 0, components: new Set(), rows: new Map(), expanded: region.run.isExpanded(),
 	});
 	geometry.components.add(component);
+	geometry.rows.set(component, row);
 	geometry.end = Math.max(geometry.end, Math.min(end, row + region.height));
 	if (region.titleRow !== undefined) {
 		const title = row + region.titleRow;
@@ -306,9 +310,18 @@ function installLayoutHook(state: RendererState, scroll: Scroll): void {
 		if (state.renderer.terminal && (state.renderer.terminal.columns !== viewport.frame.width || state.renderer.terminal.rows !== viewport.frame.height)) return;
 		const ledger: Ledger = new Map();
 		walkCached(scroll.children[0], viewport.document.rect.width, contentHeight, 0, 0, contentHeight, ledger);
-		const title = ledger.get(run.owner)?.get(run.id)?.title;
-		if (title === undefined) return;
-		scroll.scrollTo(title - transaction.desiredRow, { disableFollow: true });
+		const geometry = ledger.get(run.owner)?.get(run.id);
+		if (!geometry) return;
+		if (transaction.anchor) {
+			const anchor = transaction.anchor;
+			const row = anchor.position === "body" ? geometry.rows.get(anchor.component) : undefined;
+			const offset = anchor.position === "body" ? anchor.offset() : undefined;
+			const target = row !== undefined && offset !== undefined
+				? row + offset - transaction.desiredRow : geometry.end - viewportHeight;
+			scroll.scrollTo(target, { disableFollow: true });
+		} else if (geometry.title !== undefined) {
+			scroll.scrollTo(geometry.title - transaction.desiredRow, { disableFollow: true });
+		}
 	};
 	Object.defineProperty(wrapper, HOOK, { value: true });
 	scroll.updateLayout = wrapper;
@@ -353,15 +366,25 @@ function capture(state: RendererState, unmoved: boolean): void {
 	publish(state, unmoved && !!previous && sameDocumentLayout(previous, state.viewport));
 }
 
-function performToggle(state: RendererState | undefined, run: AggregateViewportRun, desiredOffset?: number): void {
+function performToggle(state: RendererState | undefined, run: AggregateViewportRun, desiredOffset?: number, anchor?: ToggleAnchor): void {
 	pending = undefined;
 	const viewport = state?.viewport;
 	const geometry = viewport?.ledger.get(run.owner)?.get(run.id);
 	if (viewport && geometry?.title !== undefined && current(state, viewport) && !state.renderer.hasOverlay() && run.isValid()) {
 		const clipInset = viewport.box.clip.y - viewport.box.rect.y;
 		const row = geometry.title - viewport.scrollTop - clipInset;
-		const desiredRow = clipInset + (desiredOffset ?? (row >= 0 && row < viewport.box.clip.height ? row : 0));
-		pending = { state, viewport, run, generation: generation(run.owner), expanded: run.isExpanded(), desiredRow };
+		let desiredRow = clipInset + (desiredOffset ?? (row >= 0 && row < viewport.box.clip.height ? row : 0));
+		if (anchor?.position === "body") {
+			const componentRow = geometry.rows.get(anchor.component);
+			const offset = anchor.offset();
+			const height = regions.get(anchor.component)?.height;
+			const bodyRow = componentRow !== undefined && offset !== undefined ? componentRow + offset : undefined;
+			const top = viewport.scrollTop + clipInset;
+			if (bodyRow !== undefined && height !== undefined && componentRow + height > top
+				&& bodyRow < top + viewport.box.clip.height) desiredRow = bodyRow - viewport.scrollTop;
+			else anchor = { position: "end" };
+		}
+		pending = { state, viewport, run, generation: generation(run.owner), expanded: run.isExpanded(), desiredRow, anchor };
 		// Suppress follow even when the old document is shorter than the viewport.
 		viewport.scroll.scrollTo(viewport.scroll.scrollTop, { disableFollow: true });
 	}
@@ -369,10 +392,38 @@ function performToggle(state: RendererState | undefined, run: AggregateViewportR
 	catch (error) { pending = undefined; throw error; }
 }
 
-export function toggleAggregateViewportRun(component: object, run: AggregateViewportRun): void {
+export function toggleAggregateViewportRun(component: object, run: AggregateViewportRun, anchor?: ToggleAnchor): void {
 	const region = regions.get(component);
 	const state = region && valid(region) && region.run.owner === run.owner && region.run.id === run.id ? receivers.get(component) : undefined;
-	performToggle(state, run);
+	performToggle(state, run, undefined, anchor);
+}
+
+export function scrollAggregateViewportRunStart(component: object, run: AggregateViewportRun): boolean {
+	const region = regions.get(component);
+	const state = receivers.get(component);
+	const viewport = state?.viewport;
+	if (!region || !valid(region) || region.run.owner !== run.owner || region.run.id !== run.id
+		|| !viewport || !current(state, viewport) || state.renderer.hasOverlay()) return false;
+	const title = viewport.ledger.get(run.owner)?.get(run.id)?.title;
+	if (title === undefined) return false;
+	pending = undefined;
+	viewport.scroll.scrollTo(title - (viewport.box.clip.y - viewport.box.rect.y), { disableFollow: true });
+	return true;
+}
+
+/** Navigate to a rendered component without toggling its run or taking focus. */
+export function scrollAggregateViewportComponent(component: object, offset = 0): boolean {
+	const region = regions.get(component);
+	const state = receivers.get(component);
+	const viewport = state?.viewport;
+	if (!region || !valid(region) || !viewport || !current(state, viewport)
+		|| state.renderer.hasOverlay() || !size(offset) || offset >= region.height) return false;
+	const row = viewport.ledger.get(region.run.owner)?.get(region.run.id)?.rows.get(component);
+	if (row === undefined) return false;
+	pending = undefined;
+	const clipInset = viewport.box.clip.y - viewport.box.rect.y;
+	viewport.scroll.scrollTo(row + offset - clipInset, { disableFollow: true });
+	return true;
 }
 
 export function subscribeAggregateViewportControl(owner: object, listener: (control: AggregateViewportControl | undefined) => void): () => void {

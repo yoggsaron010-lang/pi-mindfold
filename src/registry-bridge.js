@@ -10,7 +10,9 @@ export function installRegistryBridge(decorator, onRegistry) {
   const original = prototype._refreshToolRegistry;
   if (typeof original !== "function") throw new Error("pi-mindfold requires Pi 1.0's tool registry adapter.");
   let enabled = true;
+  let session;
   const patched = function (...args) {
+    session = this;
     if (enabled) {
       for (const tool of this._baseToolDefinitions?.values() ?? []) decorator.decorate(tool);
       for (const tool of this._customTools ?? []) decorator.decorate(tool);
@@ -21,9 +23,11 @@ export function installRegistryBridge(decorator, onRegistry) {
     return result;
   };
   const state = {
+    refresh() { if (enabled) session?._refreshToolRegistry(); },
     dispose() {
       if (!enabled) return;
       enabled = false;
+      session = undefined;
       decorator.restore();
       if (prototype._refreshToolRegistry === patched) prototype._refreshToolRegistry = original;
       if (prototype[OWNER] === state) delete prototype[OWNER];
@@ -31,5 +35,5 @@ export function installRegistryBridge(decorator, onRegistry) {
   };
   prototype._refreshToolRegistry = patched;
   prototype[OWNER] = state;
-  return () => state.dispose();
+  return state;
 }

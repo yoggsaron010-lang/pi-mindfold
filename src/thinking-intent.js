@@ -42,7 +42,7 @@ export function readPublicActivity(message, { offset = 0, complete = false, lang
 
 /** Remove only the active public status line from the compact projection.
  * The original message and expanded transcript retain it verbatim. */
-export function compactAssistantContent(message, range) {
+export function compactAssistantContent(message, range, extraRange) {
   let position = 0;
   let textBlocks = 0;
   return (message.content ?? []).filter((block) => block.type !== "thinking").map((block) => {
@@ -51,10 +51,16 @@ export function compactAssistantContent(message, range) {
     const start = position;
     const end = start + block.text.length;
     position = end;
-    if (!range || range.end <= start || range.start >= end) return block;
-    const left = Math.max(0, range.start - start);
-    const right = Math.min(block.text.length, range.end - start);
-    return { ...block, text: block.text.slice(0, left) + block.text.slice(right) };
+    const ranges = [range, extraRange].filter((entry) => entry && entry.end > start && entry.start < end)
+      .map((entry) => ({ start: Math.max(0, entry.start - start), end: Math.min(block.text.length, entry.end - start) }))
+      .sort((a, b) => a.start - b.start);
+    if (!ranges.length) return block;
+    let result = "", cursor = 0;
+    for (const entry of ranges) {
+      result += block.text.slice(cursor, Math.max(cursor, entry.start));
+      cursor = Math.max(cursor, entry.end);
+    }
+    return { ...block, text: result + block.text.slice(cursor) };
   });
 }
 

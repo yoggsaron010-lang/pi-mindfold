@@ -1,229 +1,182 @@
-# Pi Mindfold
+# pi-mindfold
 
-面向 Pi 1.x 的紧凑思考与中文工具意图插件，已通过 Pi **1.0.0** 与 **1.3.0** 的兼容性回归。
+收起冗长的思考与工具记录，直接找到你需要的回答。
 
-默认只显示当前活动。思考时显示灰色斜体 `Thinking`；工具开始执行后，显示最新开始的工具原生预览及中文意图。较早工具的迟到结果不会切换当前活动。
+[![npm version](https://img.shields.io/npm/v/pi-mindfold.svg)](https://www.npmjs.com/package/pi-mindfold)
+[![Pi compatibility](https://img.shields.io/badge/Pi-1.0.0%20%7C%201.3.0-blue.svg)](./COMPATIBILITY.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-按钮固定在输入栏上方，显示当前状态 `[Collapse]` 或 `[Expanded]`。展开后恢复本次请求中收到的思考内容与全部工具记录，最终 Markdown 正文始终保留在对话区。
+[English](./README.md) · [功能](#功能) · [安装与运行](#安装与运行) · [操作速查](#操作速查)
 
-## 显示效果
+Mindfold 是 [Pi Coding Agent](https://github.com/earendil-works/pi) 的对话展示插件。它将长思考和连续工具输出折叠为当前活动，显示这一步的执行目的，让回答正文更容易阅读。对话变长后，还可以通过 **Turns 轮次目录**，按请求目的找到以前的回答。
 
-### 折叠态（默认模式，单一活动焦点）
+## 看看实际效果
 
-> 折叠模式下，历史思考与已完成的工具调用自动收起，仅在输入框上方呈现最新正在执行的工具卡片与实时意图。
+### Collapse：只关注当前活动
 
-<p align="center">
-  <img src="./assets/demo-collapsed.png" alt="折叠态：单一活动焦点" width="850" />
-</p>
-
-### 展开态（按需展开，完整时序复盘）
-
-> 点击输入框上方的 `[Collapse]` 按钮或按下 `Ctrl+Alt+T`，瞬间拉开本轮完整的思维链过程、全部工具调用输出与嵌套执行记录。
+思考标签与工具卡片随执行进度相互替换，之前的活动自动收起，助手正文保持可见。
 
 <p align="center">
-  <img src="./assets/demo-expanded.png" alt="展开态：完整历史时序" width="850" />
+  <img src="./assets/demo-collapse.gif" alt="Collapse 演示：思考与工具卡片依次替换，最终回答正文保持可见" width="960">
 </p>
 
-按钮固定在输入栏上方。折叠时显示 `[Collapse]`，展开时显示 `[Expanded]`：
+### Turns：按请求目的找回回答
 
-```text
-[Collapse]  ‹ 2/2 ›  Ctrl+Alt+T
-> 输入消息
-```
+打开 **Turn History**，选择一条请求摘要，直接跳到对应轮次的回答。
+
+<p align="center">
+  <img src="./assets/demo-turns.gif" alt="Turns 演示：展开请求目录，在三个历史轮次的正文之间跳转" width="960">
+</p>
 
 ## 功能
 
-- 默认折叠，只保留当前活动。并行工具按实际开始顺序选择最新项，旧工具的迟到结果不会抢回显示位置。
-- 思考时先显示 `Thinking`，收到模型的公开状态行后补成 `Thinking — 意图`。
-- 展开当前对话的可见思考、工具历史与意图，支持 codemode 嵌套工具。
-- 保留完整 Markdown 正文；切换时保持输入焦点并处理滚动定位。
-- 支持重载和恢复会话；保存新调用的启动顺序与嵌套结果。
-- 不增加模型请求，不需要第二个模型或额外 API Key。提示说明、公开状态行和工具意图仍消耗少量 token。
+- **单一活动焦点**：显示当前思考或最新开始的工具，以及一句简短的执行目的。
+- **正文清晰可读**：收起之前的思考与工具卡片，保留助手回答。
+- **按需展开完整记录**：查看本轮实际收到的思考、工具结果和嵌套工具调用。
+- **展开即看输出**：默认定位本轮末尾，点击 `↑` 回到思考或工具开始处。
+- **请求目录**：按用户目的浏览历史轮次，直接跳到对应回答。
+- **自动切换意图语言**：中文输入使用中文意图，其他语言输入使用英文意图。
+- **会话恢复**：重载或恢复会话后，继续查看已保存的摘要与工具记录。
+- **不增加模型请求**：在正常回答和工具调用中生成意图标签。
 
-“一次对话”指一次用户请求至最终完成，包括中间的多次工具循环。steering 和自动恢复继续使用当前记录。新请求默认折叠；完成后移除思考标签，存在工具调用时保留最后一个工具。
+## 安装与运行
 
-## 安装
+### 1. 安装插件
 
-从 npm 安装：
+需要 Node.js **22.19 或更新版本**，以及可正常运行的 [Pi CLI](https://github.com/earendil-works/pi#readme)。Mindfold 已在 Pi **1.0.0** 和 **1.3.0** 上测试，面向同一进程中只有一个活动会话的 CLI 使用方式。
 
-```text
+```sh
 pi install npm:pi-mindfold
 ```
 
-或从 GitHub 下载或克隆本仓库后，在仓库目录执行：
+这会安装 **npm 上已发布的版本**。如需运行本地工作目录中的功能，改为在该目录安装：
 
-```text
+```sh
+cd pi-mindfold
 pi install .
 ```
 
-在 Pi 中执行 `/reload`，或重启 Pi。也可以指定本地绝对路径：
+也可以直接安装 GitHub 版本：
 
-```text
-pi install /absolute/path/to/pi-mindfold
+```sh
+pi install git:github.com/yoggsaron010-lang/pi-mindfold
 ```
 
-Pi 提供运行时依赖，本插件不需要单独安装 `pi-tool-explain`。
+选择一种安装来源，避免 Pi 同时加载多份 Mindfold。
 
-若同时升级了 Pi 宿主，需要退出并重新启动 Pi；`/reload` 只重载扩展，不能替换运行中的宿主版本。
+### 2. 启动 Pi
 
-## 意图语言
-
-默认使用简体中文（`zh-CN`）。如需英文意图，在**启动 Pi 之前**设置环境变量 `PI_MINDFOLD_LANG=en`：
-
-```bash
-# macOS / Linux（写入 ~/.zshrc 或 ~/.bashrc 可长期生效）
-export PI_MINDFOLD_LANG=en
+```sh
 pi
 ```
 
-```powershell
-# Windows PowerShell（长期生效可用 setx PI_MINDFOLD_LANG en）
-$env:PI_MINDFOLD_LANG = "en"
-pi
-```
+如果 Pi 已经在运行，输入 `/reload` 加载插件。若同时升级了 Pi 本身，需要退出后重新启动。继续使用你已配置好的 Pi 模型连接，Mindfold 不需要额外的 API Key。
 
-英文模式下，工具 `displaySummary`、公开状态行（`Activity intent: ...`）、codemode 注释（`// Intent: ...`）、兜底文案以及 `/mindfold status`、命令与快捷键说明均改为英文。`en`、`en-US`、`en_GB` 等值选择英文，其他值保持 `zh-CN`。语言在扩展加载时读取一次，修改后需重启 Pi（`/reload` 沿用原进程环境）。会话中已记录的意图保持原语言。两种模式都能识别 `// 意图：` 与 `// Intent:` 注释。
+使用鼠标按钮、Turns 目录和自动滚动定位时，需要 Pi 的 **fullscreen 模式**。如需切换，在 `~/.pi/agent/settings.json` 中设置 `"tuiMode": "fullscreen"` 后重启 Pi；Windows 上该文件位于 `%USERPROFILE%\.pi\agent\settings.json`。普通终端模式可用快捷键和命令折叠、展开，滚动由终端管理。
 
-## 操作
+### 3. 发送请求
 
-| 操作 | 效果 |
-|---|---|
-| 点击 `[Collapse]` / `[Expanded]` | 切换选中对话的显示状态 |
-| `Ctrl+Alt+T` | 切换选中对话的显示状态 |
-| 点击 `‹` / `›` | 选择上一次或下一次对话 |
-| `/mindfold` 或 `/mindfold toggle` | 切换显示状态 |
-| `/mindfold expand` | 展开选中对话 |
-| `/mindfold collapse` | 折叠选中对话 |
-| `/mindfold prev` / `/mindfold next` | 选择历史对话 |
-| `/mindfold status` | 查看对话数量、意图接入数量和保留原参数约定的工具 |
-
-鼠标操作需要 Pi fullscreen 模式；普通终端模式可以使用快捷键和命令。
-
-Pi 内置的 `/compact` 用于压缩模型上下文。本插件主命令为 `/mindfold`（保留 `/compact-thinking` 作为兼容别名）。
-
-## 思考阶段的公开意图
-
-插件会通过结构化系统提示，请模型在提供工作进度说明时，将下面的简体中文状态行放在公开正文开头（英文模式为 `Activity intent: ...`）：
+例如，在 Pi 输入：
 
 ```text
-活动意图：检查重载后历史工具的恢复逻辑
+检查这个项目，并说明如何运行测试。
 ```
 
-在状态行接收完整后，折叠视图将其显示为：
+输入框上方会显示控制栏：
 
 ```text
-Thinking — 检查重载后历史工具的恢复逻辑
+[Collapse]  ‹ 1/3 ›  [Turns]  Ctrl+Alt+T
 ```
 
-具体规则：
+`1/3` 表示当前选中第 1 轮，共有 3 轮可浏览。一轮包含一次用户请求及完成该请求所需的工具执行过程。
 
-1. 尚无意图或状态行仍在流式生成时，显示 `Thinking`。换行或文本块结束后才采用该意图。
-2. 只读取显式的公开 `活动意图：...` 状态行，不从思考原文提取或猜测意图，也不把普通回答、引用和代码示例当作状态。
-3. 新的助手消息或新的 `thinking_start` 阶段清除旧意图；同一阶段的后续思考增量保留已收到的意图。
-4. 工具启动后切换为工具块及其 `displaySummary`。正式正文开始后退出思考标签，保留完整回答。
-5. 折叠态在当前思考标签中显示状态，避免重复显示活动行；展开后保留原始公开状态行与实际收到的可见思考。原始消息不被改写。
+## 使用方法
 
-**不同模型无法保证在思考开始的第一时间提供公开意图。** 如果供应商先输出思考、后输出公开文本，意图会在公开状态到达后更新；没有有效状态行时保持 `Thinking`。该功能不请求或提取模型未公开的内部推理。
+### 在 Collapse 模式下跟踪进度
 
-单行意图会清理终端控制字符，最长保留 96 个字符，并按窗口宽度显示。
-
-## 工具阶段的中文意图
-
-内置工具和使用普通对象参数 schema 的自定义工具会接入意图机制，例如：
-
-- `read`、`bash`、`powershell`、`edit`、`write`、`grep`、`find`、`ls`。
-- `nushell` / `nu`、搜索、网页读取、任务管理及动态注册的 MCP 工具。
-
-模型在正常工具调用中填写 `displaySummary`：
-
-```json
-{
-  "path": "src/index.ts",
-  "displaySummary": "检查入口文件如何注册工具"
-}
-```
-
-插件执行前剥离新增字段，原工具及其参数准备函数只收到业务参数。模型没有提供有效意图时使用中文兜底文案。
-
-codemode 保留 Pi 的原生 grammar 采样与工具声明，通过脚本开头的中文注释提供顶层意图。脚本内部工具继续各自填写 `displaySummary`：
-
-```js
-// 意图：批量检查入口与配置文件
-const results = await Promise.allSettled([
-  tools.read({ path: "src/index.ts", displaySummary: "检查入口工具注册" }),
-  tools.read({ path: "package.json", displaySummary: "确认插件依赖配置" })
-]);
-for (const result of results) text(result);
-```
-
-若脚本有 `// @options:` 行，意图注释放在它后面。
-
-已经自行定义 `displaySummary` 的工具、组合参数 schema 和其他 grammar 工具保留原有约定。`/compact-thinking status` 会列出这些例外。
-
-## 历史与数据保存
-
-折叠只改变显示，不删除对话消息。展开只能恢复 API 实际返回的可见思考与工具结果；工具本身已截断的内容无法恢复，自定义 renderer 自己施加的显示限制仍然有效。
-
-插件通过不进入模型上下文的自定义 session 条目保存：
-
-- `mindfold.tool-start`：工具真实开始顺序。
-- `mindfold.nested`：嵌套工具的显示结果，仅含 `content` 与 `details`，避免重复保存 `structuredContent` 和用量信息。
-
-单条嵌套数据超过 64 KB 时，完整数据保存到会话目录下的 `.mindfold/` 旁文件，session 保存路径与 SHA-256 校验值。不会按工具数量截断历史。备份或搬迁会话时需同时保留旁文件目录；文件缺失或损坏时显示提示，目录不可写时退回完整内联保存。
-
-旧会话仍可读取，但此前没有保存的嵌套输出和精确并行启动顺序无法补回。上下文压缩后，导航只统计仍然可见的对话。
-
-## 兼容性与验证
-
-| 环境 | 自动化回归 |
-|---|---|
-| Pi 1.0.0 | 64 项通过 |
-| Pi 1.3.0 | 64 项通过 |
-
-验证包含真实 SDK 流式事件、正常工具循环、grammar 采样、动态工具注册、重载与历史恢复，以及原生 fullscreen 的鼠标、滚动定位、中文输入焦点和窗口缩放。
-
-测试使用脚本化模型回复与内存终端传输，没有调用外部模型服务。尚未对每个模型或实际终端组合进行人工验收。
-
-本插件面向标准 CLI 单活动会话。它使用有清理机制的 Pi 内部接口适配；升级 Pi 后应重新运行测试。同进程并行运行多个 SDK `AgentSession` 的补丁隔离尚未支持，也不建议同时启用其他接管同一思考或工具组件的展示插件。
-
-详细记录见 [COMPATIBILITY.md](./COMPATIBILITY.md) 与 [VERIFICATION.md](./VERIFICATION.md)。
-
-## 开发
-
-需要 Node.js 22.19 或更新版本，以及本机安装的 Pi。
+新请求默认折叠。思考开始时显示 `Thinking`，模型提供公开的进度标签后，会更新为：
 
 ```text
+Thinking — 检查测试配置
+```
+
+工具开始时，替换为工具卡片及其意图：
+
+```text
+read package.json
+  ↳ 确认测试命令
+```
+
+并行工具以最新开始的一项为当前活动，较早工具晚返回时不会抢回显示位置。请求完成后移除思考占位，保留最后一个工具卡片与助手正文。
+
+模型未提供进度标签时保持 `Thinking`；工具未提供意图时显示简短的默认说明。
+
+### 展开记录，回看本轮开始
+
+点击 `[Collapse]` 或按 `Ctrl+Alt+T`，展开选中轮次的记录：
+
+```text
+[Expanded] ↑  ‹ 1/3 ›  [Turns]  Ctrl+Alt+T
+```
+
+展开后定位到**该轮末尾**，方便直接阅读输出。点击 `↑` 回到最早的思考或工具开始处。再次折叠时，尽量保持正在阅读的正文位置；如果正在看思考或工具，则回到本轮末尾。输入框保留焦点。
+
+展开能显示 Pi 实际收到的思考与工具输出。工具已截断的内容，或模型未返回的内容，无法恢复。
+
+### 用 Turns 浏览请求目录
+
+点击 `[Turns]` 或输入 `/mindfold turns`，目录会向上展开。每行显示轮次编号和一句用户目的摘要。
+
+- 点击条目，或用 `↑` / `↓` 选择后按 `Enter`，跳到对应回答。
+- 使用鼠标滚轮浏览，目录一次最多显示 8 条。
+- `●` 标记当前选中的轮次，`Esc` 关闭目录。
+- 直接打字会关闭目录并继续在输入框输入。
+
+新轮次的摘要由模型在正常回答中生成。旧轮次或没有摘要的回答，显示用户原消息的简短预览。摘要会消耗少量输出 token，不额外调用模型。
+
+浏览相邻轮次时，也可以点击 `‹` 或 `›`。箭头和目录条目都会跳到**该轮正文开头**，保留该轮原有的展开或折叠状态。目录只包含当前会话分支及上下文压缩后保留的轮次。
+
+## 操作速查
+
+| 操作 | 按钮或快捷键 | 命令 |
+|---|---|---|
+| 切换选中轮次的显示状态 | `[Collapse]` / `[Expanded]`、`Ctrl+Alt+T` | `/mindfold toggle` |
+| 展开并查看本轮末尾 | 点击 `[Collapse]` | `/mindfold expand` |
+| 折叠选中轮次 | 点击 `[Expanded]` | `/mindfold collapse` |
+| 回到本轮开始 | `[Expanded]` 右侧 `↑` | `/mindfold start` |
+| 跳到上一轮或下一轮正文 | `‹` / `›` | `/mindfold prev`、`/mindfold next` |
+| 打开或关闭请求目录 | `[Turns]` | `/mindfold turns` |
+| 查看插件状态 | — | `/mindfold status` |
+
+单独输入 `/mindfold` 也可切换显示状态，`/compact-thinking` 是兼容别名。
+
+## 恢复、备份与卸载
+
+按 Pi 原有方式恢复会话，Mindfold 会恢复可用的轮次标题与已保存的工具记录。复制或备份会话文件时，**同时保留旁边的 `.mindfold/` 文件夹**，较大的工具显示记录保存在其中。
+
+卸载时使用安装时的同一来源，随后执行 `/reload` 或重启 Pi：
+
+```sh
+pi remove npm:pi-mindfold
+```
+
+GitHub 安装使用 `pi remove git:github.com/yoggsaron010-lang/pi-mindfold`；本地安装则传入对应目录路径。已有会话记录仍保留在磁盘中。
+
+## 文档与贡献
+
+详见[兼容性说明](./COMPATIBILITY.md)、[验证记录](./VERIFICATION.md)和 [Pi 文档](https://github.com/earendil-works/pi#readme)。遇到问题可提交 [GitHub Issue](https://github.com/yoggsaron010-lang/pi-mindfold/issues)，也欢迎通过 Pull Request 改进项目。
+
+验证本地修改时，需要 Node.js 22.19+ 和已安装的 Pi：
+
+```sh
 npm test
 npm run check
-npm pack --dry-run
 ```
 
-测试默认读取 `~/.pi/agent/install/current-version`，使用当前 managed 安装版本；通过 `COMPACT_PI_ROOT` 可指定其他已安装的 Pi 宿主包目录。测试不会安装第二份 Pi。
+测试会自动查找 Pi 的 managed 安装。使用其他安装布局时，先将 `COMPACT_PI_ROOT` 设置为本机 `@earendil-works/pi-coding-agent` 包所在目录，再运行 `npm test`。
 
-检查当前配置的扩展加载与工具注册：
+## 致谢与许可
 
-```text
-node --import ./tests/host-imports.mjs ./scripts/compat-smoke.mjs
-```
-
-`npm run check` 检查 JavaScript 和 vendored TypeScript 语法；打包检查使用 `npm pack --dry-run`。
-
-## 卸载
-
-使用安装时的同一来源：
-
-```text
-pi remove npm:pi-mindfold
-# 或：pi remove /absolute/path/to/pi-mindfold
-```
-
-随后执行 `/reload` 或重启 Pi。卸载不自动删除已有会话的历史显示数据。
-
-## 贡献者与致谢
-
-- 特别感谢 [@Nyarlathoteppppp](https://github.com/Nyarlathoteppppp) 为原版 [pi-tool-explain](https://github.com/Nyarlathoteppppp/pi-tool-explain) 所作的意图与展示机制贡献。
-- 上游贡献者：[MasuRii](https://github.com/MasuRii)（`pi-tool-display`）与 [Mert Deveci](https://github.com/mertdeveci5)（`pi-tool-display-summary`）。
-
-本项目复用了 `vendor/pi-tool-explain/` 下的代码与原始许可，完整说明参见 [THIRD_PARTY.md](./THIRD_PARTY.md)。
+感谢 [@Nyarlathoteppppp](https://github.com/Nyarlathoteppppp) 及 [pi-tool-explain](https://github.com/Nyarlathoteppppp/pi-tool-explain) 提供 Mindfold 使用的意图与展示代码。上游工作还包括 [MasuRii 的 pi-tool-display](https://github.com/MasuRii) 和 [Mert Deveci 的 pi-tool-display-summary](https://github.com/mertdeveci5)，完整许可说明见 [THIRD_PARTY.md](./THIRD_PARTY.md)。
 
 本项目采用 [MIT License](./LICENSE)。

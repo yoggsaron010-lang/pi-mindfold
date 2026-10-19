@@ -9,7 +9,7 @@ import {
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import mindfold from "../index.js";
-import { resolveLanguage, LANGUAGE_ENV } from "../src/locale.js";
+import { requestLanguage, resolveLanguage, resolveLanguageMode, LANGUAGE_ENV } from "../src/locale.js";
 import { IntentDecorator, fallbackIntent, intentFor } from "../src/intent.js";
 import { addPublicActivityGuideline, PUBLIC_ACTIVITY_GUIDELINE, readPublicActivity } from "../src/thinking-intent.js";
 import { INLINE_PAYLOAD_BYTES, loadDisplayPayload, nestedResultReceipt, saveDisplayPayload } from "../src/activity-journal.js";
@@ -18,12 +18,35 @@ const { createCodemodeToolDefinition } = await hostModule("./extensions/codemode
 
 const text = (value) => ({ role: "assistant", content: [{ type: "text", text: value }] });
 
-test("PI_MINDFOLD_LANG selects English and anything else keeps the Simplified Chinese default", () => {
+test("PI_MINDFOLD_LANG selects English and anything else keeps the Simplified Chinese default", (t) => {
+  const previous = process.env[LANGUAGE_ENV];
+  t.after(() => {
+    if (previous === undefined) delete process.env[LANGUAGE_ENV];
+    else process.env[LANGUAGE_ENV] = previous;
+  });
+  delete process.env[LANGUAGE_ENV];
+  assert.equal(resolveLanguage(), "zh-CN");
   assert.equal(resolveLanguage(undefined), "zh-CN");
+  process.env[LANGUAGE_ENV] = "en";
+  assert.equal(resolveLanguage(), "en");
+  assert.equal(resolveLanguage(undefined), "en");
+  assert.equal(resolveLanguage("zh-CN"), "zh-CN");
   assert.equal(resolveLanguage(""), "zh-CN");
   assert.equal(resolveLanguage("fr"), "zh-CN");
   assert.equal(resolveLanguage("zh"), "zh-CN");
   for (const value of ["en", "EN", " en-US ", "en_GB"]) assert.equal(resolveLanguage(value), "en");
+});
+
+test("automatic intent language uses Chinese for Chinese input and English for other languages", () => {
+  for (const prompt of ["检查配置", "請檢查設定", "请检查 src/index.js", "𠮷字测试"]) assert.equal(requestLanguage(prompt), "zh-CN");
+  for (const prompt of ["Check configuration", "Vérifiez la configuration", "Проверьте настройки", "設定を確認してください", "설정을 확인하세요", "123 ✅"]) assert.equal(requestLanguage(prompt), "en");
+  assert.equal(requestLanguage("", "auto", "en"), "en");
+  assert.equal(requestLanguage(undefined, "auto", "zh-CN"), "zh-CN");
+  assert.equal(requestLanguage("检查配置", "en"), "en");
+  assert.equal(requestLanguage("Check configuration", "zh-CN"), "zh-CN");
+  for (const value of ["", "auto", "fr"]) assert.equal(resolveLanguageMode(value), "auto");
+  assert.equal(resolveLanguageMode("EN_us"), "en");
+  assert.equal(resolveLanguageMode("zh-CN"), "zh-CN");
 });
 
 test("English fallbacks, schema description and prompt guideline replace the Chinese ones", () => {
@@ -41,6 +64,30 @@ test("English fallbacks, schema description and prompt guideline replace the Chi
     assert.match(tool.promptGuidelines.join("\n"), /Write it in English/);
     assert.equal(tool.prepareArguments({ path: "a" }).displaySummary, "Read file");
   } finally { decorator.restore(); }
+});
+
+test("decorators switch languages without stacking wrappers or changing codemode schemas", () => {
+  const parameters = { type: "object", properties: { path: { type: "string" } } };
+  const execute = (_id, args) => args;
+  const tool = { name: "read", parameters, execute, promptGuidelines: ["Keep original guideline"] };
+  const codemode = createCodemodeToolDefinition();
+  const grammarSchema = codemode.parameters;
+  const decorator = new IntentDecorator({ language: "zh-CN" });
+  try {
+    decorator.decorate(tool);
+    decorator.decorate(codemode);
+    for (const language of ["en", "zh-CN", "en"]) {
+      decorator.setLanguage(language);
+      assert.equal(tool.prepareArguments({ path: "a" }).displaySummary, fallbackIntent("read", language));
+      assert.deepEqual(tool.execute("call", { path: "a", displaySummary: "intent" }), { path: "a" });
+      assert.equal(tool.promptGuidelines.length, 2);
+      assert.equal(codemode.parameters, grammarSchema);
+      assert.match(codemode.promptGuidelines.at(-1), language === "en" ? /\/\/ Intent:/ : /\/\/ 意图：/);
+    }
+  } finally { decorator.restore(); }
+  assert.equal(tool.parameters, parameters);
+  assert.equal(tool.execute, execute);
+  assert.deepEqual(tool.promptGuidelines, ["Keep original guideline"]);
 });
 
 test("codemode asks for an English intent comment and either comment form is read back", () => {

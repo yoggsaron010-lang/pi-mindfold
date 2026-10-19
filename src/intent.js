@@ -41,6 +41,20 @@ export class IntentDecorator {
     return tool;
   }
 
+  setLanguage(language) {
+    const replacements = new Map();
+    if (language === this.language) return replacements;
+    const tools = [...this.originals.keys()];
+    const previous = tools.map((tool) => tool.promptGuidelines.at(-1));
+    this.restore();
+    this.language = language;
+    for (const [index, tool] of tools.entries()) {
+      this.decorate(tool);
+      replacements.set(previous[index], tool.promptGuidelines.at(-1));
+    }
+    return replacements;
+  }
+
   restore() {
     for (const [tool, { before, after }] of this.originals) {
       for (const [key, descriptor] of before) {

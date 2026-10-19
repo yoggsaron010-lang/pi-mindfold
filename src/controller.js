@@ -2,8 +2,10 @@ import { MouseRegion, truncateToWidth, visibleWidth } from "@earendil-works/pi-t
 import { ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 import {
   patchAggregateViewport, recordAggregateViewportRegion, releaseAggregateViewportRegion,
-  resetAggregateViewportOwner, restoreAggregateViewport, toggleAggregateViewportRun,
+  resetAggregateViewportOwner, restoreAggregateViewport, scrollAggregateViewportComponent, scrollAggregateViewportRunStart, toggleAggregateViewportRun,
 } from "../vendor/pi-tool-explain/aggregate-viewport.ts";
+import { hydrateTurnTitles } from "./turn-history.js";
+import { TurnsDirectory } from "./turns-directory.js";
 import { messages } from "./locale.js";
 import { installRenderBridge } from "./render-bridge.js";
 
@@ -15,7 +17,11 @@ export class CompactController {
   definitions = new Map();
   runs = new Map();
   anchors = new Map();
-  constructor(store) { this.store = store; }
+  bodyAnchors = new Map();
+  constructor(store) {
+    this.store = store;
+    this.directory = new TurnsDirectory(this);
+  }
 
   attach(ctx) {
     this.ctx = ctx;
@@ -34,22 +40,30 @@ export class CompactController {
           const label = group?.expanded ? "[Expanded]" : "[Collapse]";
           const index = this.store.groups.indexOf(group);
           const navigation = this.store.groups.length > 1 ? `  ‹ ${index + 1}/${this.store.groups.length} ›` : "";
-          const text = `${theme.fg("accent", label)}${theme.fg("muted", `${navigation}  Ctrl+Alt+T`)}`;
-          return [truncateToWidth(text, Math.max(0, width), "")];
+          const start = group?.expanded ? " ↑" : "";
+          const text = `${theme.fg("accent", label)}${theme.fg("muted", `${start}${navigation}  [Turns]  Ctrl+Alt+T`)}`;
+          return [...this.directory.render(width), truncateToWidth(text, Math.max(0, width), "")];
         },
         invalidate() {},
       };
       return new MouseRegion(control, (event) => {
+        const menu = this.directory.handleMouse(event);
+        if (menu) return menu;
+        if (event.y !== this.directory.rowCount) return;
         if (event.button !== "left" || !["press", "release", "click"].includes(event.type)) return;
         const group = this.store.selected ?? this.store.current;
         const labelWidth = visibleWidth(group?.expanded ? "[Expanded]" : "[Collapse]");
+        const index = this.store.groups.indexOf(group);
+        const nav = this.store.groups.length > 1 ? `‹ ${index + 1}/${this.store.groups.length} ›` : "";
+        const controlWidth = labelWidth + (group?.expanded ? 2 : 0);
+        const turnsX = controlWidth + (nav ? visibleWidth(nav) + 4 : 2);
         let action;
-        if (event.x < labelWidth) action = () => this.toggle();
-        else if (this.store.groups.length > 1 && event.x >= labelWidth + 2) {
-          const index = this.store.groups.indexOf(group);
-          const nav = `‹ ${index + 1}/${this.store.groups.length} ›`;
-          if (event.x === labelWidth + 2) action = () => this.select(-1);
-          else if (event.x === labelWidth + 2 + visibleWidth(nav) - 1) action = () => this.select(1);
+        if (event.x >= turnsX && event.x < turnsX + 7) action = () => this.directory.toggle();
+        else if (event.x < labelWidth) action = () => this.toggle();
+        else if (group?.expanded && event.x === labelWidth + 1) action = () => this.start();
+        else if (nav && event.x >= controlWidth + 2) {
+          if (event.x === controlWidth + 2) action = () => this.select(-1);
+          else if (event.x === controlWidth + 2 + visibleWidth(nav) - 1) action = () => this.select(1);
         }
         if (!action) return;
         // Claim the press so repeated clicks are not interpreted as word selection.
@@ -83,13 +97,42 @@ export class CompactController {
     if (!group || (expanded !== undefined && group.expanded === expanded)) return;
     const run = this.runs.get(group);
     const anchor = this.anchors.get(group);
-    if (run && anchor) toggleAggregateViewportRun(anchor, run);
+    const body = this.bodyAnchors.get(group);
+    const position = group.expanded && body
+      ? { position: "body", component: body.component, offset: () => this.bodyAnchors.get(group)?.row }
+      : { position: "end" };
+    if (run && anchor) toggleAggregateViewportRun(anchor, run, position);
     else { group.expanded = !group.expanded; this.changed(); }
+  }
+
+  start() {
+    const group = this.store.selected ?? this.store.current;
+    const run = this.runs.get(group);
+    const anchor = this.anchors.get(group);
+    if (run && anchor) scrollAggregateViewportRunStart(anchor, run);
+    this.changed();
+  }
+
+  refreshTurnTitles() {
+    if (!this.store.groups.some((group) => !group.intentSummary && !group.prompt?.trim())) return;
+    const entries = this.ctx?.sessionManager?.buildContextEntries?.();
+    if (entries) hydrateTurnTitles(this.store, entries);
   }
 
   select(direction) {
     const index = this.store.groups.indexOf(this.store.selected ?? this.store.current);
-    this.store.selected = this.store.groups[Math.max(0, Math.min(this.store.groups.length - 1, index + direction))];
+    const group = this.store.groups[Math.max(0, Math.min(this.store.groups.length - 1, index + direction))];
+    this.selectGroup(group);
+  }
+
+  selectGroup(group) {
+    if (!this.store.groups.includes(group)) return;
+    this.store.selected = group;
+    const body = this.bodyAnchors.get(group);
+    if (!body || !scrollAggregateViewportComponent(body.component, body.row)) {
+      const anchor = this.anchors.get(group);
+      if (anchor) scrollAggregateViewportComponent(anchor);
+    }
     this.changed();
   }
 
@@ -123,6 +166,7 @@ export class CompactController {
   }
 
   clear() {
+    this.directory.close();
     resetAggregateViewportOwner(this);
     this.assistants.clear();
     this.tools.clear();
@@ -130,6 +174,7 @@ export class CompactController {
     this.instances.clear();
     this.runs.clear();
     this.anchors.clear();
+    this.bodyAnchors.clear();
   }
 
   dispose() {

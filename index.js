@@ -4,15 +4,17 @@ import { IntentDecorator } from "./src/intent.js";
 import { installRegistryBridge } from "./src/registry-bridge.js";
 import { nestedResultReceipt, saveDisplayPayload, toolStartReceipt } from "./src/activity-journal.js";
 import { addPublicActivityGuideline } from "./src/thinking-intent.js";
-import { messages, resolveLanguage } from "./src/locale.js";
+import { turnIntentGuideline } from "./src/turn-intent.js";
+import { messages, requestLanguage, resolveLanguage, resolveLanguageMode } from "./src/locale.js";
 
 export default function mindfold(pi) {
+  const mode = resolveLanguageMode();
   const language = resolveLanguage();
   const text = messages(language);
-  const store = new ActivityStore({ language });
+  const store = new ActivityStore({ language, languageMode: mode });
   const controller = new CompactController(store);
   const decorator = new IntentDecorator({ language });
-  const disposeRegistry = installRegistryBridge(decorator, (registry) => { controller.definitions = registry ?? new Map(); });
+  const registryBridge = installRegistryBridge(decorator, (registry) => { controller.definitions = registry ?? new Map(); });
 
   const restore = (_event, ctx) => {
     controller.clear();
@@ -27,11 +29,32 @@ export default function mindfold(pi) {
     if (active && store.current) store.current.settled = false;
   });
   pi.on("before_agent_start", (event) => {
+    const next = requestLanguage(event.prompt, mode, store.language);
+    const changed = next !== decorator.language;
+    const replacements = decorator.setLanguage(next);
+    if (changed) {
+      registryBridge.refresh();
+      // The event holds a snapshot taken before the registry refresh. Update only
+      // our guidelines so earlier handlers' other prompt edits remain intact.
+      for (const guidelines of Object.values(event.systemPromptOptions?.toolGuidelines ?? {})) {
+        for (let i = 0; i < guidelines.length; i++) guidelines[i] = replacements.get(guidelines[i]) ?? guidelines[i];
+      }
+    }
+    store.language = next;
     if (!store.current || store.current.settled) store.begin();
-    addPublicActivityGuideline(event, language);
+    store.current.language = next;
+    if (typeof event.prompt === "string") store.current.prompt ??= event.prompt;
+    addPublicActivityGuideline(event, next);
+    if (event.systemPromptOptions && !store.current.intentSummary) {
+      const guideline = turnIntentGuideline(next);
+      if (!event.systemPromptOptions.promptGuidelines.includes(guideline)) event.systemPromptOptions.promptGuidelines.push(guideline);
+    }
   });
   pi.on("message_start", (event) => {
-    if (event.message.role === "user" && store.current?.finalResponse) store.begin();
+    if (event.message.role === "user") {
+      if (store.current?.finalResponse) store.begin();
+      store.user(event.message);
+    }
     if (event.message.role === "assistant") store.assistant(event.message, true, true);
     controller.changed();
   });
@@ -50,6 +73,10 @@ export default function mindfold(pi) {
       const group = store.assistant(event.message);
       const finished = ["stop", "aborted", "error", "length"].includes(event.message.stopReason);
       store.text(event.message, { complete: true, finished });
+      if (group?.intentSummary && !group.savedIntentSummary) {
+        pi.appendEntry("mindfold.turn-intent", { summary: group.intentSummary });
+        group.savedIntentSummary = true;
+      }
       if (finished && group) group.finalResponse = true;
     }
     controller.changed();
@@ -71,7 +98,7 @@ export default function mindfold(pi) {
   });
   // agent_end is a low-level boundary; recovery/queued continuations can follow.
   pi.on("agent_settled", () => { store.settle(); controller.changed(); });
-  pi.on("session_shutdown", () => { controller.dispose(); disposeRegistry(); });
+  pi.on("session_shutdown", () => { controller.dispose(); registryBridge.dispose(); });
 
   pi.registerShortcut("ctrl+alt+t", {
     description: text.shortcut,
@@ -80,11 +107,13 @@ export default function mindfold(pi) {
   const commandHandler = async (args, ctx) => {
     const action = args.trim() || "toggle";
     if (action === "status") {
-      ctx.ui.notify(text.status(store.groups.length, decorator.originals.size, [...decorator.skipped]), "info");
+      ctx.ui.notify(messages(store.language).status(store.groups.length, decorator.originals.size, [...decorator.skipped]), "info");
     } else if (["toggle", "expand", "collapse"].includes(action)) {
       controller.toggle(action === "toggle" ? undefined : action === "expand");
-    } else if (action === "prev" || action === "next") controller.select(action === "prev" ? -1 : 1);
-    else ctx.ui.notify(text.usage, "warning");
+    } else if (action === "start") controller.start();
+    else if (action === "turns") controller.directory.toggle();
+    else if (action === "prev" || action === "next") controller.select(action === "prev" ? -1 : 1);
+    else ctx.ui.notify(messages(store.language).usage, "warning");
   };
 
   pi.registerCommand("mindfold", {

@@ -1,7 +1,8 @@
 import { AssistantMessageComponent, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { Markdown, stripTerminalSequences, truncateToWidth } from "@earendil-works/pi-tui";
 import { messageKey } from "./activity-store.js";
 import { intentFor } from "./intent.js";
+import { expandedTurnContent, readTurnIntent } from "./turn-intent.js";
 import { compactAssistantContent } from "./thinking-intent.js";
 
 const OWNER = Symbol.for("pi-mindfold.render.v1");
@@ -60,7 +61,8 @@ export function installRenderBridge(controller) {
     controller.assistants.add(this);
     const key = messageKey(this.lastMessage);
     const thinking = !group.expanded && group.activity?.kind === "thinking" && group.activity.key === key;
-    const content = group.expanded ? this.lastMessage.content : compactAssistantContent(this.lastMessage, thinking ? group.thinkingStatusRange : undefined);
+    const summaryRange = readTurnIntent(this.lastMessage, { complete: !this.isStreaming }).range;
+    const content = group.expanded ? expandedTurnContent(this.lastMessage) : compactAssistantContent(this.lastMessage, thinking ? group.thinkingStatusRange : undefined, summaryRange);
     // Tool arguments are rendered by tool components, not the assistant Markdown.
     const signature = JSON.stringify([content.filter((block) => block.type === "text" || block.type === "thinking"),
       content.some((block) => block.type === "toolCall"), this.lastMessage.stopReason, this.lastMessage.errorMessage, this.isStreaming]);
@@ -74,6 +76,25 @@ export function installRenderBridge(controller) {
     const lines = nativeAssistantRender.call(cache.view, width).map((line) => truncateToWidth(line, width, ""));
     this.__compactView = cache.view;
     controller.record(this, group, width, lines.length + (thinking ? 1 : 0));
+    if (!this.hasToolCalls) {
+      // Native thinking is wrapped in MouseRegion; direct Markdown children are
+      // public body blocks. Use cached heights so navigation never re-renders it.
+      let row = 0, textIndex = 0;
+      const publicBlocks = content.filter((block) => block.type === "text" && block.text.trim());
+      for (const child of cache.view.contentContainer.mouseLayout?.children ?? []) {
+        if (child.component instanceof Markdown) {
+          const block = publicBlocks[textIndex++];
+          if (readTurnIntent({ content: block ? [block] : [] }, { complete: true }).range) {
+            row += child.height;
+            continue;
+          }
+          const first = lines.slice(row, row + child.height).findIndex((line) => stripTerminalSequences(line).trim());
+          if (first >= 0) controller.bodyAnchors.set(group, { component: this, row: row + first + (thinking ? 1 : 0) });
+          break;
+        }
+        row += child.height;
+      }
+    }
     if (thinking) {
       const theme = controller.theme;
       const label = theme ? theme.italic(theme.fg("thinkingText", "Thinking")) : "Thinking";
@@ -103,12 +124,12 @@ export function installRenderBridge(controller) {
     return function (args, theme, context) {
       const previous = context.lastComponent;
       const native = render(args, theme, previous instanceof IntentCall ? { ...context, lastComponent: previous.native } : context);
-      return new IntentCall(native, () => intentFor(component.args, component.toolName, controller.store.language), theme);
+      return new IntentCall(native, () => intentFor(component.args, component.toolName, controller.store.calls.get(component.toolCallId)?.group.language ?? controller.store.language), theme);
     };
   });
   patch(tool, "createCallFallback", (original) => function () {
     const native = original.call(this);
-    return enabled && controller.theme ? new IntentCall(native, () => intentFor(this.args, this.toolName, controller.store.language), controller.theme) : native;
+    return enabled && controller.theme ? new IntentCall(native, () => intentFor(this.args, this.toolName, controller.store.calls.get(this.toolCallId)?.group.language ?? controller.store.language), controller.theme) : native;
   });
   patch(tool, "setExpanded", (original) => function (expanded) {
     if (!enabled || !mouseLocked.has(this)) return original.call(this, expanded);
